@@ -40,7 +40,7 @@ std::vector<Stroke> surfaceStrokes(const Expression& f, const SurfaceParams& par
 class SurfaceSource {
 public:
   using Params = SurfaceParams;
-  static double rebuildSeconds(const Params&) noexcept { return 1.0 / 60.0; }
+  static double rebuildSeconds(const Params&) noexcept { return 1.0 / 40.0; } // a mesh of wires is the most to build
 
   void prepare(double) {}
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);

@@ -215,8 +215,11 @@ private:
       setLatencySamples(latency);
   }
 
+protected:
   EngineT engine_;
   ScopeFeed scopeFeed_;
+
+private:
   int program_ = 0;
   std::atomic<float>*size_, *attack_, *release_, *glide_, *bendRange_, *quality_, *timing_, *gain_;
 

@@ -18,6 +18,35 @@ public:
 
   explicit ParamPanel(juce::AudioProcessorValueTreeState& state) : state_(state) {}
 
+  // Start again with an empty panel.
+  void clear() {
+    sliderAttachments_.clear();
+    comboAttachments_.clear();
+    rows_.clear(); // the rows own the controls
+    removeAllChildren();
+  }
+
+  // A button across the full width, under its own small heading.
+  void addButton(const juce::String& title, const juce::String& text, std::function<void()> onClick) {
+    heading(title);
+    Row row;
+    row.height = kRowHeight + 2;
+    row.fullWidth = true;
+    auto button = std::make_unique<juce::TextButton>(text);
+    button->setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
+    button->setColour(juce::TextButton::buttonOnColourId, look::faint);
+    button->setColour(juce::TextButton::textColourOffId, look::text);
+    button->setColour(juce::TextButton::textColourOnId, look::phosphor);
+    button->setComponentID("button");
+    button->onClick = std::move(onClick);
+    row.control = std::move(button);
+    addAndMakeVisible(*row.control);
+    rows_.push_back(std::move(row));
+  }
+
+  // A menu that picks one of `options` through a parameter, labelled `title`.
+  void addChoice(const juce::String& paramId, const juce::String& title) { add(paramId, title); }
+
   // A menu at the top that applies a preset; it holds no state of its own.
   void addPresets(const juce::StringArray& names, std::function<void(int)> onChoose) {
     Row row;
@@ -67,11 +96,13 @@ public:
     rows_.push_back(std::move(row));
   }
 
-  void add(const juce::String& paramId) {
+  // `title`: the label; by default the parameter's name, less any "Group: " in front of it.
+  void add(const juce::String& paramId, const juce::String& title = {}) {
     auto* param = state_.getParameter(paramId);
     jassert(param != nullptr);
     Row row;
-    row.title = param->getName(64);
+    const juce::String name = param->getName(64);
+    row.title = title.isNotEmpty() ? title : name.contains(": ") ? name.fromFirstOccurrenceOf(": ", false, false) : name;
     row.label = std::make_unique<juce::Label>(juce::String(), row.title);
     row.label->setColour(juce::Label::textColourId, look::dim);
     row.label->setFont(look::font());

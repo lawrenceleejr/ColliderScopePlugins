@@ -75,6 +75,17 @@ public:
     label.setJustificationType(juce::Justification::centredRight);
   }
   juce::Font getPopupMenuFont() override { return font(); }
+  juce::Font getTextButtonFont(juce::TextButton&, int) override { return font(); }
+  // A button is its text over a hairline, like every other control.
+  void drawButtonBackground(juce::Graphics& g, juce::Button& button, const juce::Colour&, bool over, bool down) override {
+    const auto area = button.getLocalBounds().toFloat();
+    if (down || over) {
+      g.setColour(faint.withMultipliedAlpha(down ? 1.0f : 0.5f));
+      g.fillRect(area);
+    }
+    g.setColour(faint);
+    g.fillRect(area.getX(), area.getBottom() - 1.5f, area.getWidth(), 1.0f);
+  }
   juce::Font getLabelFont(juce::Label&) override { return font(); }
 };
 

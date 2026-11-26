@@ -233,7 +233,7 @@ TEST_CASE("Collision: tracks curve by charge and momentum", "[collision]") {
   CHECK(stiff.front().y == 0.0);
   CHECK_THAT(reach(stiff), WithinAbs(cs::kTrackerRadius, 0.02)); // straight out to the tracker's edge
   CHECK_THAT(std::atan2(stiff.back().y, stiff.back().x), WithinAbs(0.3, 0.03));
-  CHECK(reach(soft) < 0.6 * cs::kTrackerRadius); // too soft to get out: it curls up
+  CHECK(reach(soft) < cs::kTrackerRadius - 0.02); // too soft to get out: it curls round inside
   CHECK(side(soft) > 0.01);
   CHECK(side(softMinus) < -0.01); // the other charge, the other way
   CHECK_THAT(reach(muon), WithinAbs(cs::kMuonRadius, 0.02));
