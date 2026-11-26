@@ -22,7 +22,7 @@ class LatestValue {
 public:
   void write(const T& value) noexcept {
     std::array<std::uint64_t, kWords> tmp{};
-    std::memcpy(tmp.data(), &value, sizeof(T));
+    std::memcpy(tmp.data(), static_cast<const void*>(&value), sizeof(T));
     const std::uint32_t s = seq_.load(std::memory_order_relaxed);
     seq_.store(s + 1);
     for (std::size_t i = 0; i < kWords; ++i)
@@ -42,7 +42,7 @@ public:
         break;
     }
     T value;
-    std::memcpy(&value, tmp.data(), sizeof(T));
+    std::memcpy(static_cast<void*>(&value), tmp.data(), sizeof(T));
     return value;
   }
 

@@ -36,6 +36,9 @@ private:
   bool hasLast_ = false;
   float lastX_ = 0.0f, lastY_ = 0.0f;
   std::vector<float> acc_;
+  // render() scratch, kept so a display frame allocates nothing after the first
+  mutable std::vector<float> img_, wide_, narrow_, tmp_, pad_;
+  mutable std::vector<std::uint8_t> grat_;
 };
 
 } // namespace cs

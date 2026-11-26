@@ -188,6 +188,65 @@ TEST_CASE("Seed modes", "[chamber]") {
   CHECK(same(trackOf(cs::SeedMode::Global, {60}), trackOf(cs::SeedMode::Global, {62, 71})));
 }
 
+TEST_CASE("Mono voice: last note wins, releasing it falls back to the held key", "[chamber]") {
+  cs::ChamberEngine voice;
+  voice.prepare(kSampleRate);
+  std::vector<float> x(4800), y(4800);
+  voice.noteOn(57, 80);
+  voice.process(x.data(), y.data(), 4800);
+  CHECK_THAT(voice.periodHz(), WithinAbs(220.0, 1e-9));
+  voice.noteOn(64, 80);
+  voice.process(x.data(), y.data(), 4800);
+  CHECK_THAT(voice.periodHz(), WithinAbs(cs::midiToHz(64), 1e-9));
+  voice.noteOff(57); // not the sounding note: nothing changes
+  CHECK_THAT(voice.periodHz(), WithinAbs(cs::midiToHz(64), 1e-9));
+  voice.noteOn(57, 80);
+  voice.noteOff(57); // falls back to 64, still held
+  voice.process(x.data(), y.data(), 4800);
+  CHECK_THAT(voice.periodHz(), WithinAbs(cs::midiToHz(64), 1e-9));
+  CHECK(voice.active());
+  voice.noteOff(64);
+  voice.process(x.data(), y.data(), 4800);
+  CHECK_FALSE(voice.active());
+  CHECK(x.back() == 0.0f);
+}
+
+TEST_CASE("Glide is legato only and lands exactly on the note", "[chamber]") {
+  cs::ChamberParams p;
+  p.glideMs = 100.0;
+  cs::ChamberEngine voice;
+  voice.prepare(kSampleRate);
+  voice.setParams(p);
+  std::vector<float> x(4800), y(4800);
+  voice.noteOn(57, 80); // from silence: no glide
+  CHECK_THAT(voice.periodHz(), WithinAbs(220.0, 1e-9));
+  voice.process(x.data(), y.data(), 4800);
+  voice.noteOn(69, 80); // legato: glide over 100 ms
+  voice.process(x.data(), y.data(), 2400);
+  CHECK_THAT(voice.periodHz(), WithinAbs(cs::midiToHz(63.0), 0.01)); // halfway, in semitones
+  voice.process(x.data(), y.data(), 2400);
+  CHECK_THAT(voice.periodHz(), WithinAbs(440.0, 1e-9));
+}
+
+TEST_CASE("Pitch bend spans the bend range", "[chamber]") {
+  cs::ChamberParams p;
+  cs::ChamberEngine voice;
+  voice.prepare(kSampleRate);
+  voice.setParams(p);
+  voice.noteOn(69, 80);
+  voice.setPitchBend(1.0);
+  CHECK_THAT(voice.periodHz(), WithinAbs(cs::midiToHz(71), 1e-9));
+  voice.setPitchBend(-0.5);
+  CHECK_THAT(voice.periodHz(), WithinAbs(cs::midiToHz(68), 1e-9));
+  p.bendRange = 12.0;
+  voice.setParams(p);
+  CHECK_THAT(voice.periodHz(), WithinAbs(cs::midiToHz(63), 1e-9));
+  p.wall = cs::WallMode::Drone; // Drone: the bend moves the root, and the overtone with it
+  voice.setParams(p);
+  voice.setPitchBend(0.0);
+  CHECK_THAT(voice.periodHz(), WithinAbs(55.0, 1e-9));
+}
+
 TEST_CASE("Gate envelope: attack and release times", "[envelope]") {
   cs::GateEnvelope env;
   env.setSampleRate(48000.0);
