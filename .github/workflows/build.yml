@@ -1,0 +1,117 @@
+name: build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLUGINVAL_VERSION: v1.0.4
+
+jobs:
+  core:
+    name: core tests (linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCS_BUILD_PLUGINS=OFF
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  macos:
+    name: plugins (macOS universal)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCS_COPY_PLUGINS=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Core unit tests and command-line renders
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Collect plugins
+        run: |
+          mkdir -p dist
+          find build/plugins \( -name '*.vst3' -o -name '*.component' \) -maxdepth 6 -prune -exec cp -R {} dist/ \;
+          ls -la dist
+          for name in "CS Chamber" "CS Mux"; do
+            test -d "dist/$name.vst3"
+            test -d "dist/$name.component"
+            for bin in "dist/$name.vst3/Contents/MacOS/$name" "dist/$name.component/Contents/MacOS/$name"; do
+              archs=$(lipo -archs "$bin")
+              echo "$bin: $archs"
+              [[ "$archs" == *arm64* && "$archs" == *x86_64* ]]
+            done
+          done
+
+      - name: pluginval (VST3, strictness 5)
+        run: |
+          curl -fsSL -o pluginval.zip \
+            "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_macOS.zip"
+          unzip -q pluginval.zip
+          for name in "CS Chamber" "CS Mux"; do
+            pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --validate-in-process \
+              --output-dir pluginval-logs --validate "dist/$name.vst3"
+          done
+
+      - name: auval (AU)
+        run: |
+          ls -la ~/Library/Audio/Plug-Ins/Components
+          killall -9 AudioComponentRegistrar || true
+          auval -v aumu Chmb Clsc
+          auval -v aufx CMux Clsc
+
+      - name: Package
+        run: |
+          cd dist
+          for name in "CS Chamber" "CS Mux"; do
+            ditto -c -k --keepParent "$name.vst3" "${name// /-}-macOS-universal-vst3.zip"
+            ditto -c -k --keepParent "$name.component" "${name// /-}-macOS-universal-au.zip"
+          done
+          ls -la *.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ColliderScope-macOS-universal
+          path: dist/*.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pluginval-logs
+          path: pluginval-logs
+          if-no-files-found: ignore
+
+  release:
+    name: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [core, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ColliderScope-macOS-universal
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
