@@ -204,6 +204,18 @@ TEST_CASE("Real-time safety: CS Script allocates nothing on the audio thread", "
   checkNoAudioAllocations<cs::ScriptEngine>(p);
 }
 
+TEST_CASE("Real-time safety: ColliderScope allocates nothing on the audio thread, in any instrument",
+          "[realtime][acceptance]") {
+  for (int i = 0; i < cs::kInstrumentCount; ++i) {
+    cs::MultiParams p;
+    p.instrument = static_cast<cs::Instrument>(i);
+    p.script.setText("E = mc^2");
+    p.surface.setFunction("sin(3 * r - 4 * t) / (1 + r)");
+    CAPTURE(i);
+    checkNoAudioAllocations<cs::MultiEngine>(p);
+  }
+}
+
 template <typename Engine>
 double cpuPercent(const typename Engine::Params& p) {
   using Clock = std::chrono::steady_clock;
@@ -237,6 +249,21 @@ TEST_CASE("CPU: CS Bubble and CS Orbital under 5 % of one core", "[realtime][acc
   CHECK(bubble < 5.0);
   CHECK(orbital < 5.0);
   CHECK(script < 5.0);
+
+  cs::SurfaceParams surface;
+  surface.setFunction("sin(3 * r - 4 * t) / (1 + r)");
+  surface.lines = 32;
+  const double function = cpuPercent<cs::SurfaceEngine>(surface);
+  cs::CollisionParams busy;
+  busy.event = cs::CollisionEvent::Multijet;
+  busy.pileup = 1.0;
+  const double collision = cpuPercent<cs::CollisionEngine>(busy);
+  const double mesh = cpuPercent<cs::MeshEngine>({});
+  WARN("function: " << function << " % of a core; collision: " << collision << " %; mesh: " << mesh
+                    << " %, audio plus picture building");
+  CHECK(function < 5.0);
+  CHECK(collision < 5.0);
+  CHECK(mesh < 5.0);
 }
 
 TEST_CASE("The hook does see allocations", "[realtime]") {
