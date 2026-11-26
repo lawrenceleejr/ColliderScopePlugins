@@ -129,6 +129,7 @@ void CollisionSource::birth(const Params& params, int note, int velocity, std::u
   }
   // Pile-up: soft tracks from the other collisions in the same crossing.
   addSoft(rng, static_cast<int>(std::lround(std::clamp(params.pileup, 0.0, 1.0) * 14.0)));
+  pathsField_ = -1.0; // new tracks: their paths are made on the next build
   grid_.reset();
 }
 
@@ -136,6 +137,13 @@ void CollisionSource::build(const Params& params, int, double age, std::span<XY>
   // Everything flies out from the collision point at one speed.
   const double reached = params.formMs > 0.0 ? std::min(1.0, age / (params.formMs * 1e-3)) * kMuonRadius : kMuonRadius;
   const bool formed = reached >= kMuonRadius;
+  if (params.field != pathsField_) {
+    // The tracks do not change while a note is held, unless the field does.
+    paths_.clear();
+    for (const CollisionTrack& track : tracks_)
+      paths_.push_back(collisionTrackPath3D(track, params.field));
+    pathsField_ = params.field;
+  }
   strokes_.clear();
   if (params.threeD) {
     // The detector as a barrel lying along the beam, turned and seen from the camera.
@@ -148,8 +156,7 @@ void CollisionSource::build(const Params& params, int, double age, std::span<XY>
       const Vec3 q = view.project({fit * p.z, fit * p.x, fit * p.y});
       return Vec2{q.x, q.y};
     };
-    for (const CollisionTrack& track : tracks_) {
-      const std::vector<Vec3> path = collisionTrackPath3D(track, params.field);
+    for (const std::vector<Vec3>& path : paths_) {
       Stroke stroke;
       for (const Vec3& p : path) {
         if (!formed && std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z) > reached && stroke.size() >= 2)
@@ -187,13 +194,14 @@ void CollisionSource::build(const Params& params, int, double age, std::span<XY>
       }
     }
   } else {
-  for (const CollisionTrack& track : tracks_) {
-    Stroke path = collisionTrackPath(track, params.field);
-    if (!formed) {
-      const auto shown = static_cast<std::size_t>(reached / kStep) + 1;
-      if (shown < path.size())
-        path.resize(std::max<std::size_t>(shown, 2));
-    }
+  for (const std::vector<Vec3>& helix : paths_) {
+    // Seen along the beam: the helix without its climb.
+    std::size_t count = helix.size();
+    if (!formed)
+      count = std::min(count, std::max<std::size_t>(static_cast<std::size_t>(reached / kStep) + 1, 2));
+    Stroke path(count);
+    for (std::size_t i = 0; i < count; ++i)
+      path[i] = {helix[i].x, helix[i].y};
     strokes_.push_back(std::move(path));
   }
   for (const CollisionTower& tower : towers_) {

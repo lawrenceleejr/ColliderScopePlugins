@@ -81,6 +81,8 @@ private:
 
   std::vector<CollisionTrack> tracks_;
   std::vector<CollisionTower> towers_;
+  std::vector<std::vector<Vec3>> paths_; // each track's helix, made once per event and field
+  double pathsField_ = -1.0;
   CollisionEvent event_ = CollisionEvent::Dijet;
   std::vector<Stroke> strokes_;
   HarmonicGrid grid_;

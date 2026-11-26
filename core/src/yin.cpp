@@ -61,17 +61,20 @@ void PitchTracker::analyse() noexcept {
   float running = 0.0f;
   int found = -1;
   diff_[0] = 1.0f;
+  // YIN takes the first dip below the threshold, so there is no need to
+  // look further than the bottom of that dip: a high note costs little.
   for (int tau = 1; tau <= maxTau; ++tau) {
     const float d = difference(base, base + tau, window);
     running += d;
-    diff_[static_cast<std::size_t>(tau)] = running > 0.0f ? d * static_cast<float>(tau) / running : 1.0f;
-  }
-  for (int tau = minTau; tau <= maxTau; ++tau) {
-    if (diff_[static_cast<std::size_t>(tau)] < static_cast<float>(kThreshold)) {
-      while (tau + 1 <= maxTau && diff_[static_cast<std::size_t>(tau + 1)] < diff_[static_cast<std::size_t>(tau)])
-        ++tau;
+    const float normalised = running > 0.0f ? d * static_cast<float>(tau) / running : 1.0f;
+    diff_[static_cast<std::size_t>(tau)] = normalised;
+    if (found >= 0) {
+      if (normalised < diff_[static_cast<std::size_t>(found)])
+        found = tau; // still going down
+      else
+        break; // the bottom was the step before
+    } else if (tau >= minTau && normalised < static_cast<float>(kThreshold)) {
       found = tau;
-      break;
     }
   }
 
