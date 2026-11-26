@@ -1,6 +1,6 @@
 #include "ChamberProcessor.h"
 
-#include "ChamberEditor.h"
+#include "CsEditor.h"
 
 namespace {
 
@@ -169,7 +169,13 @@ void ChamberProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
   scopeFeed_.push(x, y, n);
 }
 
-juce::AudioProcessorEditor* ChamberProcessor::createEditor() { return new ChamberEditor(*this); }
+juce::AudioProcessorEditor* ChamberProcessor::createEditor() {
+  return new cs::Editor(*this, state_, scopeFeed_, "scopeDecay",
+                        {{"Track", {"type", "seedMode", "diffusion", "drift", "condense"}},
+                         {"Wall", {"wallMode", "wallRoot", "wallShare"}},
+                         {"Voice", {"size", "attack", "release", "glide", "bendRange"}},
+                         {"Output", {"gain", "scopeDecay"}}});
+}
 
 void ChamberProcessor::getStateInformation(juce::MemoryBlock& destination) {
   if (const auto xml = state_.copyState().createXml())

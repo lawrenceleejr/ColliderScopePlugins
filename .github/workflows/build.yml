@@ -50,7 +50,10 @@ jobs:
         run: cmake --build build
 
       - name: Core unit tests and command-line renders
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          ctest --test-dir build --output-on-failure
+          # CPU and display cost on this runner, for the log
+          build/tests/cscore_rt_tests "[realtime]" | grep -E "of a core|passed|failed" || true
 
       - name: Collect plugins
         run: |
@@ -82,7 +85,7 @@ jobs:
           ls -la ~/Library/Audio/Plug-Ins/Components
           killall -9 AudioComponentRegistrar || true
           auval -v aumu Chmb Clsc
-          auval -v aufx CMux Clsc
+          auval -v aumf CMux Clsc
 
       - name: UI snapshots
         run: |

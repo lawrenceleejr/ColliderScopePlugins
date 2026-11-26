@@ -1,7 +1,8 @@
 include(${PROJECT_SOURCE_DIR}/plugins/common/CsPlugin.cmake)
 
-# Plain effect for now. Slot mode's MIDI trigger (Phase 3) may need the AU to
-# become a MusicEffect; that depends on the DAW, an open question in the spec.
+# An effect that takes MIDI (Slot mode's triggers). In Ableton Live, use the
+# VST3: Live routes MIDI to VST3 effects but not to AU effects. The AU is a
+# MusicEffect so that hosts which do route MIDI to AU effects can.
 juce_add_plugin(CSMux
   PRODUCT_NAME "CS Mux"
   COMPANY_NAME "ColliderScope"
@@ -10,17 +11,16 @@ juce_add_plugin(CSMux
   PLUGIN_CODE CMux
   FORMATS ${CS_PLUGIN_FORMATS}
   IS_SYNTH FALSE
-  NEEDS_MIDI_INPUT FALSE
+  NEEDS_MIDI_INPUT TRUE
   NEEDS_MIDI_OUTPUT FALSE
   IS_MIDI_EFFECT FALSE
   EDITOR_WANTS_KEYBOARD_FOCUS FALSE
   VST3_CATEGORIES Fx
-  AU_MAIN_TYPE kAudioUnitType_Effect
+  AU_MAIN_TYPE kAudioUnitType_MusicEffect
   COPY_PLUGIN_AFTER_BUILD ${CS_COPY_PLUGINS})
 
 target_sources(CSMux PRIVATE
-  MuxProcessor.cpp
-  MuxEditor.cpp)
+  MuxProcessor.cpp)
 
 cs_configure_plugin(CSMux)
 cs_add_uisnap(csmux_uisnap CSMux)

@@ -41,7 +41,6 @@ public:
 
   juce::AudioProcessorValueTreeState& state() noexcept { return state_; }
   cs::ScopeFeed& scopeFeed() noexcept { return scopeFeed_; }
-  float scopeDecay() const noexcept { return scopeDecay_->load(); }
 
 private:
   static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();

@@ -17,8 +17,7 @@ juce_add_plugin(CSChamber
   COPY_PLUGIN_AFTER_BUILD ${CS_COPY_PLUGINS})
 
 target_sources(CSChamber PRIVATE
-  ChamberProcessor.cpp
-  ChamberEditor.cpp)
+  ChamberProcessor.cpp)
 
 cs_configure_plugin(CSChamber)
 cs_add_uisnap(cschamber_uisnap CSChamber)
