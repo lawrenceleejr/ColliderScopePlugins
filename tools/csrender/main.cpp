@@ -24,6 +24,12 @@ const char* kUsage =
     "      --diffusion R   --drift R   --condense MS   --size S   --attack MS   --release MS   --glide MS   --gain DB\n"
     "  csrender hit kick|snare|crash --out PREFIX [--radius R] [--seed N]\n"
     "      Render one drum hit.\n"
+    "  csrender mux A.wav B.wav --out PREFIX [--mode interleave|lock|slot] [options]\n"
+    "      Serialize two XY sources through the CS Mux engine.\n"
+    "      --slice N (0 = auto)   --balance B   --switch fixed|closest   --jump W\n"
+    "      --slot MS   --sensitivity S   --hits kick:T,snare:T,crash:T,b:T (slot mode, seconds)\n"
+    "  csrender shape circle|square --out PREFIX [--hz F] [--size S] [--dur SECONDS]\n"
+    "      A plain test picture.\n"
     "  csrender view IN.wav --out PREFIX\n"
     "      Draw the XY picture of an existing stereo WAV.\n"
     "\n"
@@ -31,7 +37,7 @@ const char* kUsage =
     "          default: all light from the whole render)   --decay D (0.55)   --px N (512)\n"
     "          --video FILE (also write the scope as raw rgb24 frames, PX x PX at 60 fps, for ffmpeg)\n"
     "  Writes PREFIX.wav and PREFIX.png. In XY mode left = X, right = Y.\n"
-    "  The two-input serializer (CS Mux) joins in Phase 3.\n";
+;
 
 struct Args {
   std::vector<std::string> positional;
@@ -207,6 +213,106 @@ void writeVideo(const Args& args, const csio::Audio& audio, const std::string& p
   std::fclose(f);
 }
 
+csio::Audio renderShape(const Args& args, double sampleRate) {
+  if (args.positional.size() < 2)
+    fail("shape needs a name: circle or square");
+  const bool isSquare = args.positional[1] == "square";
+  if (!isSquare && args.positional[1] != "circle")
+    fail("unknown shape '" + args.positional[1] + "'");
+  const double hz = args.num("hz", 55.0), size = args.num("size", 0.8);
+  const auto n = static_cast<std::size_t>(args.num("dur", 2.0) * sampleRate);
+  csio::Audio audio;
+  audio.sampleRate = sampleRate;
+  audio.x.resize(n);
+  audio.y.resize(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    double u = hz * static_cast<double>(i) / sampleRate;
+    u -= std::floor(u);
+    if (isSquare) {
+      const int side = static_cast<int>(u * 4.0);
+      const double t = (u * 4.0 - side) * 2.0 - 1.0;
+      const double px[] = {t, 1.0, -t, -1.0}, py[] = {-1.0, t, 1.0, -t};
+      audio.x[i] = static_cast<float>(size * px[side]);
+      audio.y[i] = static_cast<float>(size * py[side]);
+    } else {
+      audio.x[i] = static_cast<float>(size * std::cos(6.283185307179586 * u));
+      audio.y[i] = static_cast<float>(size * std::sin(6.283185307179586 * u));
+    }
+  }
+  return audio;
+}
+
+csio::Audio renderMux(const Args& args) {
+  if (args.positional.size() < 3)
+    fail("mux needs two input WAVs: A and B");
+  csio::Audio a, b;
+  std::string error;
+  if (!csio::readWav(args.positional[1], a, error) || !csio::readWav(args.positional[2], b, error))
+    fail(error);
+  if (a.sampleRate != b.sampleRate)
+    fail("A and B have different sample rates");
+  const std::size_t n = a.x.size();
+  b.x.resize(n, 0.0f);
+  b.y.resize(n, 0.0f);
+
+  cs::MuxParams p;
+  p.mode = choose<cs::MuxMode>(
+      args, "mode", {{"interleave", cs::MuxMode::Interleave}, {"lock", cs::MuxMode::CycleLock}, {"slot", cs::MuxMode::Slot}},
+      p.mode);
+  p.switchPoint = choose<cs::SwitchPoint>(
+      args, "switch", {{"fixed", cs::SwitchPoint::Fixed}, {"closest", cs::SwitchPoint::Closest}}, p.switchPoint);
+  p.slice = static_cast<int>(args.num("slice", 0));
+  p.balance = args.num("balance", p.balance);
+  p.jumpWeight = args.num("jump", p.jumpWeight);
+  p.slotMs = args.num("slot", p.slotMs);
+  p.sensitivity = args.num("sensitivity", p.sensitivity);
+
+  // Slot triggers, as MIDI notes would arrive: name:seconds.
+  struct Trigger {
+    std::size_t at;
+    int kind; // 0 kick, 1 snare, 2 crash, 3 the B input
+  };
+  std::vector<Trigger> triggers;
+  const std::string hits = args.str("hits", "");
+  for (std::size_t pos = 0; pos < hits.size();) {
+    const std::size_t end = std::min(hits.find(',', pos), hits.size());
+    const std::string item = hits.substr(pos, end - pos);
+    const std::size_t colon = item.find(':');
+    const std::string name = item.substr(0, colon);
+    const std::map<std::string, int> kinds = {{"kick", 0}, {"snare", 1}, {"crash", 2}, {"b", 3}};
+    if (colon == std::string::npos || !kinds.count(name))
+      fail("bad trigger '" + item + "', expected kick|snare|crash|b:SECONDS");
+    triggers.push_back({static_cast<std::size_t>(std::atof(item.c_str() + colon + 1) * a.sampleRate), kinds.at(name)});
+    pos = end + 1;
+  }
+  std::sort(triggers.begin(), triggers.end(), [](const Trigger& l, const Trigger& r) { return l.at < r.at; });
+
+  cs::MuxEngine engine;
+  engine.prepare(a.sampleRate);
+  engine.setParams(p);
+  csio::Audio out;
+  out.sampleRate = a.sampleRate;
+  out.x.resize(n);
+  out.y.resize(n);
+  std::size_t pos = 0;
+  auto advance = [&](std::size_t to) {
+    to = std::min(to, n);
+    if (to > pos)
+      engine.process(a.x.data() + pos, a.y.data() + pos, b.x.data() + pos, b.y.data() + pos, out.x.data() + pos,
+                     out.y.data() + pos, nullptr, nullptr, static_cast<int>(to - pos));
+    pos = std::max(pos, to);
+  };
+  for (const Trigger& t : triggers) {
+    advance(t.at);
+    if (t.kind == 3)
+      engine.triggerB();
+    else
+      engine.triggerHit(static_cast<cs::HitType>(t.kind));
+  }
+  advance(n);
+  return out;
+}
+
 void writePicture(const Args& args, const csio::Audio& audio, const std::string& path) {
   cs::ScopeView view(static_cast<int>(args.num("px", 512)));
   view.setDecay(args.num("decay", 0.55));
@@ -269,6 +375,10 @@ int main(int argc, char** argv) {
     audio = renderNotes(args, sampleRate);
   } else if (command == "hit") {
     audio = renderHit(args, sampleRate);
+  } else if (command == "shape") {
+    audio = renderShape(args, sampleRate);
+  } else if (command == "mux") {
+    audio = renderMux(args);
   } else if (command == "view") {
     if (args.positional.size() < 2)
       fail("view needs an input WAV");

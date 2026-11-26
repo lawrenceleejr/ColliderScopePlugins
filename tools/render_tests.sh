@@ -21,6 +21,16 @@ mkdir -p "$out"
 "$csrender" hit kick  --out "$out/hit_kick"
 "$csrender" hit snare --out "$out/hit_snare"
 "$csrender" hit crash --out "$out/hit_crash"
+# CS Mux: a circle at 55 Hz and a square at 220 Hz share the beam.
+"$csrender" shape circle --hz 55  --size 0.8 --dur 2 --out "$out/in_circle"
+"$csrender" shape square --hz 220 --size 0.3 --dur 2 --out "$out/in_square"
+"$csrender" mux "$out/in_circle.wav" "$out/in_square.wav" --mode interleave --at 1.5 --out "$out/mux_interleave"
+"$csrender" mux "$out/in_circle.wav" "$out/in_square.wav" --mode interleave --switch closest --at 1.5 --out "$out/mux_interleave_closest"
+"$csrender" mux "$out/in_circle.wav" "$out/in_square.wav" --mode lock --at 1.5 --out "$out/mux_cycle_lock"
+# Slot: the Chamber melody keeps the beam; kick, snare and crash each take a slot.
+"$csrender" mux "$out/chamber_melody.wav" "$out/in_square.wav" --mode slot --sensitivity 0 \
+  --hits kick:0.0,snare:0.25,kick:0.5,snare:0.75,kick:1.0,crash:1.5 --out "$out/mux_slot_drums"
+"$csrender" mux "$out/chamber_melody.wav" "$out/in_square.wav" --mode slot --sensitivity 0 --hits kick:1.0 --at 1.05 --out "$out/mux_slot_kick"
 # Round trip: a picture drawn from a WAV on disk.
 "$csrender" view "$out/chamber_alpha.wav" --at 0.6 --out "$out/view_roundtrip"
 ls -la "$out"
