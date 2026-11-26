@@ -19,8 +19,8 @@ BubbleTrack curlTrack(Vec2 from, double heading, double momentum, int charge, do
   track.points.push_back(p);
   // Radius of curvature = momentum / field; the particle slows as it goes,
   // so the curve tightens into a spiral.
-  for (int i = 0; i < 1200 && mom > 0.03; ++i) {
-    heading += charge * (0.35 + 6.0 * field) * kStep / mom;
+  for (int i = 0; i < 900 && mom > 0.09; ++i) {
+    heading += charge * (0.15 + 1.9 * field) * kStep / mom;
     p.x += kStep * std::cos(heading);
     p.y += kStep * std::sin(heading);
     if (std::hypot(p.x, p.y) > BubbleSource::kChamberRadius - 0.04)
@@ -61,16 +61,27 @@ void BubbleSource::makeTracks(const Params& params) {
 
   const double field = params.field;
   const int sign = rng.uniform() < 0.5 ? -1 : 1;
+  // A track that leaves the chamber ends there. Try a few starts and keep
+  // the longest, so most notes get a whole spiral.
+  auto longest = [&](auto&& make) {
+    BubbleTrack best = make();
+    for (int attempt = 0; attempt < 7 && best.points.size() < 260; ++attempt) {
+      BubbleTrack next = make();
+      if (next.points.size() > best.points.size())
+        best = std::move(next);
+    }
+    return best;
+  };
   tracks_.clear();
   switch (type_) {
   case BubbleType::Pair: {
     // A photon converts: an electron and a positron leave one point
     // together and curl opposite ways.
-    const Vec2 vertex{rng.uniform(-0.3, 0.3), rng.uniform(-0.45, 0.0)};
-    const double heading = rng.uniform(0.25 * kPi, 0.75 * kPi);
-    const double momentum = rng.uniform(0.5, 0.9);
-    tracks_.push_back(curlTrack(vertex, heading + 0.04, momentum, +1, field, 1.1));
-    tracks_.push_back(curlTrack(vertex, heading - 0.04, momentum * rng.uniform(0.6, 1.0), -1, field, 1.1));
+    const Vec2 vertex{rng.uniform(-0.15, 0.15), rng.uniform(-0.5, -0.2)};
+    const double heading = rng.uniform(0.4 * kPi, 0.6 * kPi);
+    const double momentum = rng.uniform(0.45, 0.6);
+    tracks_.push_back(curlTrack(vertex, heading + 0.05, momentum, +1, field, 0.7));
+    tracks_.push_back(curlTrack(vertex, heading - 0.05, momentum * rng.uniform(0.7, 1.0), -1, field, 0.7));
     break;
   }
   case BubbleType::Decay: {
@@ -78,15 +89,15 @@ void BubbleSource::makeTracks(const Params& params) {
     // lighter daughter curls away tighter.
     const double a = rng.uniform(0.0, 2.0 * kPi);
     const Vec2 from{0.8 * std::cos(a), 0.8 * std::sin(a)};
-    const double heading = a + kPi + rng.uniform(-0.35, 0.35);
-    BubbleTrack parent = curlTrack(from, heading, rng.uniform(2.0, 3.0), sign, field, 0.25);
-    const std::size_t cut = std::min(parent.points.size() - 1, static_cast<std::size_t>(rng.uniform(55.0, 90.0)));
+    const double heading = a + kPi + rng.uniform(-0.25, 0.25);
+    BubbleTrack parent = curlTrack(from, heading, rng.uniform(2.5, 3.5), sign, field, 0.2);
+    const std::size_t cut = std::min(parent.points.size() - 1, static_cast<std::size_t>(rng.uniform(60.0, 95.0)));
     parent.points.resize(cut + 1);
     const Vec2 end = parent.points.back(), before = parent.points[cut > 0 ? cut - 1 : 0];
     const double arriving = std::atan2(end.y - before.y, end.x - before.x);
     const double kink = (rng.uniform() < 0.5 ? -1.0 : 1.0) * rng.uniform(0.5, 1.1);
     tracks_.push_back(std::move(parent));
-    tracks_.push_back(curlTrack(end, arriving + kink, rng.uniform(0.35, 0.6), sign, field, 1.3));
+    tracks_.push_back(curlTrack(end, arriving + kink, rng.uniform(0.4, 0.55), sign, field, 0.7));
     break;
   }
   case BubbleType::Beam: {
@@ -98,8 +109,11 @@ void BubbleSource::makeTracks(const Params& params) {
   case BubbleType::Electron:
   case BubbleType::Auto:
   case BubbleType::Random: {
-    const Vec2 from{rng.uniform(-0.45, 0.45), rng.uniform(-0.45, 0.45)};
-    tracks_.push_back(curlTrack(from, rng.uniform(0.0, 2.0 * kPi), rng.uniform(0.7, 1.1), sign, field, 0.9));
+    tracks_.push_back(longest([&] {
+      const double a = rng.uniform(0.0, 2.0 * kPi), d = rng.uniform(0.3, 0.6);
+      // Start off-centre heading across the chamber's middle, so the spiral winds around it.
+      return curlTrack({d * std::cos(a), d * std::sin(a)}, a + kPi - sign * 1.2, rng.uniform(0.7, 0.95), sign, field, 0.55);
+    }));
     break;
   }
   }

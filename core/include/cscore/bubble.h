@@ -25,7 +25,7 @@ struct BubbleParams {
   BubbleType type = BubbleType::Auto;
   BubbleSeed seedMode = BubbleSeed::Random;
   double field = 0.5;      // 0-1: how hard the magnetic field bends the tracks
-  int bubbles = 48;        // 12-120: bubbles along the picture
+  int bubbles = 90;        // 20-200: bubbles along the picture
   double growth = 0.02;    // 0-0.1 per s: how fast a bubble's radius grows
   double maxRadius = 0.03; // 0.005-0.06: where it stops
   double boil = 0.15;      // 0-1: how much the bubbles shiver (the hiss)
@@ -49,6 +49,7 @@ class BubbleSource {
 public:
   using Params = BubbleParams;
   static constexpr double kChamberRadius = 0.9;
+  static constexpr double kRebuildSeconds = 0.002;
 
   void prepare(double) {}
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);

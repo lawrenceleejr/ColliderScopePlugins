@@ -141,6 +141,92 @@ TEST_CASE("Real-time safety: CS Mux allocates nothing while processing", "[realt
   CHECK(audioAllocations.load() == 0);
 }
 
+// The same check for the instruments built on MonoEngine.
+template <typename Engine>
+void checkNoAudioAllocations() {
+  Engine engine;
+  engine.prepare(kSampleRate);
+  engine.setSynchronous(false);
+  std::atomic<bool> stop{false};
+  std::thread builder([&] {
+    while (!stop.load())
+      if (!engine.service())
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+  });
+  std::vector<float> x(kBlock), y(kBlock);
+  float peak = 0.0f;
+  audioAllocations.store(0);
+  onAudioThread = true;
+  typename Engine::Params p;
+  for (int phrase = 0; phrase < 8; ++phrase) {
+    p.voice.releaseMs = phrase % 2 ? 30.0 : 0.0;
+    p.voice.glideMs = phrase % 4 ? 0.0 : 40.0;
+    p.voice.quality = phrase % 3 ? cs::Quality::ScopeExact : cs::Quality::Clean;
+    engine.setParams(p);
+    engine.noteOn(45 + phrase * 4, 20 + phrase * 14);
+    for (int block = 0; block < 60; ++block) {
+      if (block == 20)
+        engine.noteOn(52 + phrase, 100);
+      if (block == 30)
+        engine.setPitchBend(-0.5);
+      if (block == 40)
+        engine.noteOff(52 + phrase);
+      engine.process(x.data(), y.data(), kBlock);
+      for (int i = 0; i < kBlock; ++i)
+        peak = std::max(peak, std::abs(x[static_cast<std::size_t>(i)]));
+      std::this_thread::sleep_for(std::chrono::microseconds(500));
+    }
+    engine.allNotesOff();
+    for (int block = 0; block < 30; ++block) {
+      engine.process(x.data(), y.data(), kBlock);
+      std::this_thread::sleep_for(std::chrono::microseconds(500));
+    }
+  }
+  onAudioThread = false;
+  stop.store(true);
+  builder.join();
+  CHECK(audioAllocations.load() == 0);
+  CHECK(peak > 0.1f);
+  CHECK(std::abs(x.back()) + std::abs(y.back()) == 0.0f);
+}
+
+TEST_CASE("Real-time safety: CS Bubble allocates nothing on the audio thread", "[realtime][acceptance]") {
+  checkNoAudioAllocations<cs::BubbleEngine>();
+}
+
+TEST_CASE("Real-time safety: CS Orbital allocates nothing on the audio thread", "[realtime][acceptance]") {
+  checkNoAudioAllocations<cs::OrbitalEngine>();
+}
+
+template <typename Engine>
+double cpuPercent(const typename Engine::Params& p) {
+  using Clock = std::chrono::steady_clock;
+  const double seconds = 10.0;
+  const int blocks = static_cast<int>(seconds * kSampleRate / kBlock);
+  std::vector<float> x(kBlock), y(kBlock);
+  Engine engine;
+  engine.prepare(kSampleRate);
+  engine.setParams(p);
+  const auto start = Clock::now();
+  for (int b = 0; b < blocks; ++b) {
+    if (b % 188 == 0)
+      engine.noteOn(33 + (b / 188) % 49, 20 + (b / 188 * 37) % 100);
+    engine.process(x.data(), y.data(), kBlock);
+  }
+  return std::chrono::duration<double>(Clock::now() - start).count() / seconds * 100.0;
+}
+
+TEST_CASE("CPU: CS Bubble and CS Orbital under 5 % of one core", "[realtime][acceptance]") {
+  const double bubble = cpuPercent<cs::BubbleEngine>({});
+  cs::OrbitalParams heavy;
+  heavy.orbital = 20; // 4f, 16 wires: the most to draw
+  heavy.lines = 16;
+  const double orbital = cpuPercent<cs::OrbitalEngine>(heavy);
+  WARN("bubble: " << bubble << " % of a core; orbital: " << orbital << " % of a core, audio plus picture building");
+  CHECK(bubble < 5.0);
+  CHECK(orbital < 5.0);
+}
+
 TEST_CASE("The hook does see allocations", "[realtime]") {
   audioAllocations.store(0);
   onAudioThread = true;

@@ -91,6 +91,7 @@ class OrbitalSource {
 public:
   using Params = OrbitalParams;
   static constexpr double kSize = 0.9; // the outer shell's reach in the picture
+  static constexpr double kRebuildSeconds = 1.0 / 120.0; // a wireframe costs more to build than a track
 
   void prepare(double) {}
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);

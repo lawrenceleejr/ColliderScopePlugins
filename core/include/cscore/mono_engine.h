@@ -9,13 +9,14 @@
 //
 //   struct Source {
 //     struct Params { VoiceParams voice; ... };   // trivially copyable
+//     static constexpr double kRebuildSeconds;     // shortest time between pictures
 //     void prepare(double sampleRate);
 //     void birth(const Params&, int note, int velocity, std::uint32_t serial);
 //     void build(const Params&, int note, double age, std::span<XY> table);
 //   };
 //
-// service() runs it at control rate (each period or 2 ms, whichever is
-// longer) and publishes tables lock-free. Synchronous mode (the default)
+// service() runs it at control rate (each period or kRebuildSeconds,
+// whichever is longer) and publishes tables lock-free. Synchronous mode (the default)
 // runs it inline, sample-exact: for offline renders and tests.
 #pragma once
 
@@ -53,7 +54,6 @@ class MonoEngine {
 public:
   using Params = typename Source::Params;
   static constexpr std::size_t kTableSize = 2048;
-  static constexpr double kMinRebuildSeconds = 0.002;
 
   MonoEngine() { prepare(48000.0); }
 
@@ -62,7 +62,7 @@ public:
     while (servicing_.test_and_set())
       std::this_thread::yield();
     sampleRate_ = builderSampleRate_ = sampleRate;
-    minRebuild_ = static_cast<std::int64_t>(kMinRebuildSeconds * sampleRate);
+    minRebuild_ = static_cast<std::int64_t>(Source::kRebuildSeconds * sampleRate);
     env_.setSampleRate(sampleRate);
     env_.reset();
     osc_.reset();

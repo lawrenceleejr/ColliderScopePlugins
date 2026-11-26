@@ -1,6 +1,7 @@
 add_executable(cscore_tests
   test_chamber.cpp
   test_hits.cpp
+  test_instruments.cpp
   test_mux.cpp
   test_path.cpp
   test_pitch.cpp
