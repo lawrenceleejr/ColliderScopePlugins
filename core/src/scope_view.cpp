@@ -11,6 +11,7 @@ namespace {
 constexpr int kUpsample = 6;
 constexpr double kRange = 1.02; // the display spans +-1.02 of full scale
 constexpr std::size_t kToneSize = 4096;
+constexpr std::size_t kColours = 1023;
 constexpr double kToneScale = kToneSize / 10.19; // table spans x = 0 .. 5^1.5 - 1
 
 // The video renderer uses gain 0.2 for a 1000 px scope at 30 fps. Light per
@@ -20,7 +21,8 @@ double gainFor(int size) { return 0.2 * (1000.0 / size) * 0.87; }
 
 // Separable Gaussian blur, edges held. Loops run tap-outermost over
 // contiguous rows so the compiler can vectorise them.
-void blur(std::vector<float>& img, int size, double sigma, std::vector<float>& tmp, std::vector<float>& pad) {
+void blur(const std::vector<float>& in, std::vector<float>& img, int size, double sigma, std::vector<float>& tmp,
+          std::vector<float>& pad) {
   const int radius = std::max(1, static_cast<int>(std::ceil(3.0 * sigma)));
   float kernel[64];
   float sum = 0.0f;
@@ -30,10 +32,10 @@ void blur(std::vector<float>& img, int size, double sigma, std::vector<float>& t
     kernel[i] /= sum;
 
   const auto n = static_cast<std::size_t>(size);
-  tmp.assign(img.size(), 0.0f);
+  tmp.assign(in.size(), 0.0f);
   pad.resize(n + 2 * static_cast<std::size_t>(radius));
   for (std::size_t row = 0; row < n; ++row) { // along rows
-    const float* src = img.data() + row * n;
+    const float* src = in.data() + row * n;
     float* dst = tmp.data() + row * n;
     std::fill(pad.begin(), pad.begin() + radius, src[0]);
     std::copy(src, src + n, pad.begin() + radius);
@@ -45,7 +47,7 @@ void blur(std::vector<float>& img, int size, double sigma, std::vector<float>& t
         dst[c] += w * p[c];
     }
   }
-  std::fill(img.begin(), img.end(), 0.0f);
+  img.assign(in.size(), 0.0f);
   for (int row = 0; row < size; ++row) { // along columns
     float* dst = img.data() + static_cast<std::size_t>(row) * n;
     for (int k = -radius; k <= radius; ++k) {
@@ -136,8 +138,7 @@ void ScopeView::renderARGB(std::vector<std::uint32_t>& argb) const {
   const std::size_t count = acc_.size();
   const auto n = static_cast<std::size_t>(size_);
   // Core: slight blur, then a log tone map. Most of the screen is dark.
-  img_ = acc_;
-  blur(img_, size_, 1.1, tmp_, pad_);
+  blur(acc_, img_, size_, 1.1, tmp_, pad_);
   // log1p(x) / log1p(4), clipped at 1.5 (x = 5^1.5 - 1), from a table.
   static const auto toneTable = [] {
     std::array<float, kToneSize + 2> t{};
@@ -158,41 +159,54 @@ void ScopeView::renderARGB(std::vector<std::uint32_t>& argb) const {
   const std::size_t h = n / 2, q = n / 4;
   halve(img_, n, narrow_);
   halve(narrow_, h, wide_);
-  blur(narrow_, static_cast<int>(h), 1.25, tmp_, pad_);
-  blur(wide_, static_cast<int>(q), 1.75, tmp_, pad_);
+  blur(narrow_, narrow_, static_cast<int>(h), 1.25, tmp_, pad_);
+  blur(wide_, wide_, static_cast<int>(q), 1.75, tmp_, pad_);
   doubleSize(wide_, q, glowHalf_, pad_);
   for (std::size_t i = 0; i < h * h; ++i)
     glowHalf_[i] = glowHalf_[i] * 1.2f + narrow_[i] * 0.7f;
   doubleSize(glowHalf_, h, glow_, pad_);
 
-  if (grat_.size() != count) {
-    // 8 x 8 divisions across +-0.95 of full scale, faint.
-    grat_.assign(count, 0.0f);
-    const double scale = size_ / (2.0 * kRange);
-    const int lo = static_cast<int>(std::lround((kRange - 0.95) * scale));
-    const int hi = std::min(size_ - 1, static_cast<int>(std::lround((kRange + 0.95) * scale)));
-    for (int k = 0; k <= 8; ++k) {
-      const auto line = static_cast<std::size_t>(std::min(size_ - 1, static_cast<int>(std::lround(lo + (hi - lo) * k / 8.0))));
-      for (auto j = static_cast<std::size_t>(lo); j <= static_cast<std::size_t>(hi); ++j)
-        grat_[line * n + j] = grat_[j * n + line] = 0.055f;
-    }
-  }
+  // Colour: luminance x (0.35, 1.0, 0.45), plus white above 0.75 for a hot
+  // core. A table from luminance to pixel; the graticule goes on afterwards.
+  auto colour = [](float lum, float g) {
+    const float hot = std::max(lum - 0.75f, 0.0f) * 1.2f;
+    const auto channel = [&](float gain, float gratGain) {
+      return static_cast<std::uint32_t>(std::min(lum * gain + hot + g * gratGain, 1.0f) * 255.0f + 0.5f);
+    };
+    return 0xff000000u | (channel(0.35f, 0.75f) << 16) | (channel(1.0f, 0.9f) << 8) | channel(0.45f, 0.8f);
+  };
+  static const auto colourTable = [&colour] {
+    std::array<std::uint32_t, kColours + 1> t{};
+    for (std::size_t i = 0; i <= kColours; ++i)
+      t[i] = colour(static_cast<float>(i) / kColours, 0.0f);
+    return t;
+  }();
 
-  // Colour: luminance x (0.35, 1.0, 0.45), plus white above 0.75 for a hot core.
   argb.resize(count);
-  const float gratGain = graticule_ ? 255.0f : 0.0f;
   const float* core = img_.data();
   const float* glow = glow_.data();
-  const float* grat = grat_.data();
   std::uint32_t* out = argb.data();
   for (std::size_t i = 0; i < count; ++i) {
     const float lum = std::min(core[i] * 0.9f + glow[i], 1.0f);
-    const float hot = std::max(lum - 0.75f, 0.0f) * (1.2f * 255.0f);
-    const float g = grat[i] * gratGain;
-    const auto red = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::min(lum * (0.35f * 255.0f) + hot + g * 0.75f, 255.0f)));
-    const auto green = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::min(lum * 255.0f + hot + g * 0.9f, 255.0f)));
-    const auto blue = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::min(lum * (0.45f * 255.0f) + hot + g * 0.8f, 255.0f)));
-    out[i] = 0xff000000u | (red << 16) | (green << 8) | blue;
+    out[i] = colourTable[static_cast<std::size_t>(static_cast<std::int32_t>(lum * kColours + 0.5f))];
+  }
+
+  if (graticule_) {
+    // 8 x 8 divisions across +-0.95 of full scale, faint: only these pixels are recoloured.
+    if (gratPixels_.empty()) {
+      const double scale = size_ / (2.0 * kRange);
+      const int lo = static_cast<int>(std::lround((kRange - 0.95) * scale));
+      const int hi = std::min(size_ - 1, static_cast<int>(std::lround((kRange + 0.95) * scale)));
+      for (int k = 0; k <= 8; ++k) {
+        const auto line = static_cast<std::size_t>(std::min(size_ - 1, static_cast<int>(std::lround(lo + (hi - lo) * k / 8.0))));
+        for (auto j = static_cast<std::size_t>(lo); j <= static_cast<std::size_t>(hi); ++j) {
+          gratPixels_.push_back(static_cast<std::uint32_t>(line * n + j));
+          gratPixels_.push_back(static_cast<std::uint32_t>(j * n + line));
+        }
+      }
+    }
+    for (const std::uint32_t i : gratPixels_)
+      out[i] = colour(std::min(core[i] * 0.9f + glow[i], 1.0f), 0.055f);
   }
 }
 

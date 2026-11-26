@@ -39,8 +39,8 @@ private:
   float lastX_ = 0.0f, lastY_ = 0.0f;
   std::vector<float> acc_;
   // render() scratch, kept so a display frame allocates nothing after the first
-  mutable std::vector<float> img_, wide_, narrow_, glowHalf_, glow_, grat_, tmp_, pad_;
-  mutable std::vector<std::uint32_t> argbScratch_;
+  mutable std::vector<float> img_, wide_, narrow_, glowHalf_, glow_, tmp_, pad_;
+  mutable std::vector<std::uint32_t> argbScratch_, gratPixels_;
 };
 
 } // namespace cs
