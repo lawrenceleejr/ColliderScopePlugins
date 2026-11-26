@@ -8,9 +8,11 @@ on:
 permissions:
   contents: read
 
+# A newer push waits for the run in progress instead of cancelling it, so
+# every run that starts also finishes; only a run still waiting is replaced.
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   PLUGINVAL_VERSION: v1.0.4
