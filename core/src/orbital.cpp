@@ -102,14 +102,14 @@ double OrbitalShape::crossing(const Lobe& lobe, double value) const noexcept {
   return dr_ * (static_cast<double>(lo) + (a > b ? (a - value) / (a - b) : 0.0));
 }
 
-double OrbitalShape::radius(int shell, double level, double theta, double phi) const noexcept {
+double OrbitalShape::radius(int shell, double level, double theta, double phi, double scaleLevel) const noexcept {
   if (lobes_.empty() || shell < 0 || shell >= shells())
     return 0.0;
   const double angular = std::abs(legendre(l_, m_, std::cos(theta)) * std::cos(m_ * phi)) / angularPeak_;
   if (angular <= level)
     return 0.0; // too close to an angular node: the surface does not reach this direction
   const Lobe& lobe = lobes_[static_cast<std::size_t>(shell)];
-  const double full = crossing(lobes_.back(), level * lobes_.back().peakValue);
+  const double full = crossing(lobes_.back(), (scaleLevel > 0.0 ? scaleLevel : level) * lobes_.back().peakValue);
   return full > 0.0 ? crossing(lobe, level * lobe.peakValue / angular) / full : 0.0;
 }
 
@@ -140,7 +140,8 @@ void OrbitalSource::build(const Params& params, int, double age, std::span<XY> t
   shape_.set(id.n, id.l, id.m);
 
   // Bloom: the surface starts at the lobe's core and grows out to its level.
-  double level = std::clamp(params.level, 0.02, 0.9);
+  const double settled = std::clamp(params.level, 0.02, 0.9);
+  double level = settled;
   if (params.bloomMs > 0.0 && age < params.bloomMs * 1e-3) {
     const double u = 1.0 - age / (params.bloomMs * 1e-3);
     level += (0.97 - level) * u * u;
@@ -160,7 +161,7 @@ void OrbitalSource::build(const Params& params, int, double age, std::span<XY> t
     run.clear();
   };
   auto add = [&](int shell, double theta, double phi) {
-    const double r = shape_.radius(shell, level, theta, phi) * kSize;
+    const double r = shape_.radius(shell, level, theta, phi, settled) * kSize;
     if (r <= 0.0) {
       flush(); // an angular node: the wire stops here
       return;

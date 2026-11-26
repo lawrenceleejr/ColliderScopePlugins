@@ -163,21 +163,21 @@ TEST_CASE("Bubble: bubbles grow while the note is held", "[bubble]") {
   cs::BubbleEngine voice;
   const Render r = play(voice, p, 45, 120, 1.0, 0.0);
   const auto& track = voice.source().tracks()[0].points;
-  auto spread = [&](std::size_t from, std::size_t to) {
-    double worst = 0.0;
+  auto spread = [&](std::size_t from, std::size_t to) { // how far the beam strays from the path: 90th percentile
+    std::vector<double> off;
     for (std::size_t i = from; i < to; ++i) {
       double nearest = 1e9;
       for (const cs::Vec2& q : track)
         nearest = std::min(nearest, std::hypot(r.x[i] / 0.9 - q.x, r.y[i] / 0.9 - q.y));
-      if (nearest < 0.1) // leave out the jump home
-        worst = std::max(worst, nearest);
+      off.push_back(nearest);
     }
-    return worst;
+    std::sort(off.begin(), off.end());
+    return off[off.size() * 9 / 10];
   };
   const double young = spread(4800, 7200), old = spread(43200, 48000);
   CAPTURE(young, old);
-  CHECK(young < 0.02);
-  CHECK(old > 0.03);
+  CHECK(young < 0.012); // 0.1 s old: radius about 0.007
+  CHECK(old > 0.025);   // 1 s old: grown to the 0.04 limit
   CHECK(old < 0.04 * 1.4 + 0.012); // the largest bubble, plus half a step along the track
 }
 

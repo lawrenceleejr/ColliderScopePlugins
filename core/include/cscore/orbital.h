@@ -72,7 +72,9 @@ public:
   // (a fraction of that lobe's peak), scaled so the outermost shell just
   // reaches 1 where the angular part is largest. 0 where there is no
   // surface in that direction (near an angular node).
-  double radius(int shell, double level, double theta, double phi) const noexcept;
+  // `scaleLevel`, if given, is the level whose outer shell is the unit of
+  // length: a surface drawn at a higher level than that is smaller.
+  double radius(int shell, double level, double theta, double phi, double scaleLevel = 0.0) const noexcept;
 
 private:
   struct Lobe {
