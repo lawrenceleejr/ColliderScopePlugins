@@ -41,9 +41,11 @@ public:
       history_[write_] = in[i];
       write_ = (write_ + 1) & kMask;
     }
+    // Centre the filter on the first input of a group, 4 groups back, so the
+    // delay is a whole number of output samples.
     float out = 0.0f;
     for (std::size_t k = 0; k < kTaps; ++k)
-      out += taps_[k] * history_[(write_ - 1 - k) & kMask];
+      out += taps_[k] * history_[(write_ - kFactor - k) & kMask];
     return out;
   }
 
