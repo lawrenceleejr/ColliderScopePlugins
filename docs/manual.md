@@ -104,8 +104,8 @@ CS Chamber and ColliderScope both have this control.
   It solves once at the start of a note and then holds, so the tone is steady.
 
 What it buys depends on how much there is to rearrange. Measured as the share of the sound's energy
-in consonant harmonics: CS Orbital, with many wires, goes from 0.85 to 0.89 and improves on four notes
-in five; CS Bubble and CS Chamber barely change, because a row of bubbles or a single track leaves
+in consonant harmonics: Orbital, with many wires, goes from 0.85 to 0.89 and improves on four notes
+in five; Bubble and CS Chamber barely change, because a row of bubbles or a single track leaves
 little choice. Script keeps its strokes in reading order and only chooses the grid. Function and Mesh
 always use even timing, because their pictures change from frame to frame as they turn. The price is brightness: a stroke rounded up to a whole slot is drawn slower, and so
 brighter, than one rounded down.
