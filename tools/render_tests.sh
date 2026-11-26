@@ -34,6 +34,17 @@ done
 "$csrender" notes --instrument script --text '\frac{\partial\psi}{\partial t} = \hat{H}\psi' --notes 57:0:0.6:80 --at 0.4 --out "$out/script_schrodinger"
 "$csrender" notes --instrument script --text '\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}' --notes 57:0:0.6:80 --at 0.4 --out "$out/script_gaussian"
 "$csrender" notes --instrument script --text 'ColliderScope\\\alpha\beta\gamma \to \Omega' --slant 0.2 --write 500 --notes 45:0:0.8:80 --at 0.7 --out "$out/script_two_lines"
+# Function: z = f(x, y), with and without hidden lines.
+"$csrender" notes --instrument function --function 'sin(3*r - 4*t) / (1 + r)' --notes 57:0:1:80 --at 0.5 --out "$out/function_ripples"
+"$csrender" notes --instrument function --function 'gauss(r/1.5) * cos(3*x)' --spin 0 --notes 57:0:1:80 --at 0.5 --out "$out/function_packet"
+"$csrender" notes --instrument function --function 'x*y/3' --hidden 0 --spin 0 --notes 57:0:1:80 --at 0.5 --out "$out/function_saddle_see_through"
+# Collision: one event of each kind.
+for event in minbias dijet zmumu multijet fourmuon; do
+  "$csrender" notes --instrument collision --event "$event" --seed 3 --notes 57:0:1:80 --at 0.6 --out "$out/collision_$event"
+done
+# Mesh: the built-in torus from two cameras.
+"$csrender" notes --instrument mesh --notes 57:0:1:80 --at 0.5 --out "$out/mesh_torus"
+"$csrender" notes --instrument mesh --elevation 60 --perspective 0.8 --axis x --notes 57:0:1:80 --at 0.5 --out "$out/mesh_torus_close"
 # Timing: the same orbital with even and with harmonic timing.
 "$csrender" notes --instrument orbital --orbital 3dxz --timing even --notes 57:0:1.2:80 --at 0.6 --out "$out/orbital_3dxz_even"
 # Drum hits, each in its own slot.

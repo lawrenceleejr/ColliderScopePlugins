@@ -1,7 +1,12 @@
 # ColliderScope Plugins: manual
 
-Five plugins for oscilloscope music: four instruments (CS Chamber, CS Bubble, CS Orbital, CS Script)
-and one effect (CS Mux). In XY mode the left channel is X and the right channel is Y, so the sound is the
+Three plugins for oscilloscope music:
+
+- **CS Chamber**, an instrument: cloud-chamber tracks, with chords.
+- **ColliderScope**, an instrument with six modes, chosen with its Instrument menu: Bubble, Orbital,
+  Script, Function, Collision and Mesh.
+- **CS Mux**, an effect that shows two pictures on one scope.
+ In XY mode the left channel is X and the right channel is Y, so the sound is the
 picture: every setting below changes both.
 
 ## Install
@@ -11,14 +16,14 @@ and unzip it.
 
 | Plugin file | Goes in |
 | --- | --- |
-| the five `.vst3` bundles | `~/Library/Audio/Plug-Ins/VST3` |
-| the five `.component` bundles | `~/Library/Audio/Plug-Ins/Components` |
+| the three `.vst3` bundles | `~/Library/Audio/Plug-Ins/VST3` |
+| the three `.component` bundles | `~/Library/Audio/Plug-Ins/Components` |
 
 The builds are unsigned, so clear the quarantine flag once after copying, then rescan in your DAW:
 
 ```sh
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/CS\ *.vst3
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/CS\ *.component
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/{CS\ Chamber,CS\ Mux,ColliderScope}.vst3
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/{CS\ Chamber,CS\ Mux,ColliderScope}.component
 ```
 
 Universal binary (Apple Silicon and Intel), macOS 12 or later.
@@ -87,7 +92,7 @@ carries on alone after that. With the wall off, a note held longer goes silent.
 
 ### Timing
 
-All four instruments have this control.
+CS Chamber and ColliderScope both have this control.
 
 - **Even** spreads the period along the path by length, so every line is equally bright. It takes
   no account of the sound.
@@ -101,15 +106,27 @@ All four instruments have this control.
 What it buys depends on how much there is to rearrange. Measured as the share of the sound's energy
 in consonant harmonics: CS Orbital, with many wires, goes from 0.85 to 0.89 and improves on four notes
 in five; CS Bubble and CS Chamber barely change, because a row of bubbles or a single track leaves
-little choice. CS Script keeps its strokes in reading order and only chooses the grid. The price is brightness: a stroke rounded up to a whole slot is drawn slower, and so
+little choice. Script keeps its strokes in reading order and only chooses the grid. Function and Mesh
+always use even timing, because their pictures change from frame to frame as they turn. The price is brightness: a stroke rounded up to a whole slot is drawn slower, and so
 brighter, than one rounded down.
 
-## CS Bubble (instrument)
+## ColliderScope (instrument)
+
+One monophonic instrument that can draw six kinds of picture. The Instrument menu at the top of the
+window picks the kind, and the panel shows that kind's controls, followed by the Voice and Output
+controls, which are the same as CS Chamber's and are shared by all six. Presets are named by
+instrument and switch to it. A host sees every instrument's parameters at once, named "Bubble: Field",
+"Mesh: Zoom" and so on.
+
+Three things are not parameters, because hosts automate numbers and not text or files: Script's text,
+Function's formula and Mesh's model. They are saved with the project.
+
+### Bubble
 
 A bubble chamber. Each note is an event: a charged particle crosses a magnetic field, losing energy as
 it goes, so its track curls into a spiral. The track is a row of bubbles. The beam dwells on a young
 bubble, a bright dot, and circles an older one, so a note starts as a dotted line with a stepped,
-buzzy tone and fizzes more as the bubbles swell. Monophonic, with the same voice controls as CS Chamber.
+buzzy tone and fizzes more as the bubbles swell.
 
 | Group | Parameter | What it does |
 | --- | --- | --- |
@@ -122,14 +139,14 @@ buzzy tone and fizzes more as the bubbles swell. Monophonic, with the same voice
 | | Bubble size | The size at which they stop. |
 | | Boil | How much the bubbles shiver: the hiss. |
 
-Presets: Spiral bass, Pair pluck, Fizz. A track lasts as long as the key is held.
+A track lasts as long as the key is held.
 
-## CS Orbital (instrument)
+### Orbital
 
 Surfaces. Each note draws a hydrogen orbital as a wireframe of its isosurface, the surface on which
 the wavefunction has one size, spinning about the orbital's axis. Each radial lobe of the orbital is
 one shell: 1s is a sphere, 2s a sphere within a sphere, 2p two lobes, 3d lobes and a ring or a
-four-leaf clover, 4f more lobes still. Monophonic, with the same voice controls as CS Chamber.
+four-leaf clover, 4f more lobes still.
 
 | Group | Parameter | What it does |
 | --- | --- | --- |
@@ -140,13 +157,12 @@ four-leaf clover, 4f more lobes still. Monophonic, with the same voice controls 
 | View | Spin | Turning rate about the orbital's axis. Negative turns the other way. |
 | | Tilt | How far the axis leans toward you. At 0 you look from the side, at 90 down the axis. |
 
-Presets: s sine, p lead, d pad, f bell. The wireframe is see-through: wires on the far side show too.
+The wireframe is see-through: wires on the far side show too.
 
-## CS Script (instrument)
+### Script
 
 Text and equations. Type a line into the Text field and each note draws it with single-stroke
-letters, fitted to the screen and drawn in reading order. Monophonic, with the same voice controls as
-CS Chamber. The text is saved with the project; it is not a parameter, so it cannot be automated.
+letters, fitted to the screen and drawn in reading order.
 
 The Text field takes a small part of LaTeX's syntax:
 
@@ -171,6 +187,79 @@ are drawn at normal size), no big operators with limits above and below, and one
 A line of text is many short strokes with jumps between them, so the faint jump lines show more than
 on the other instruments, and long lines are small. Short texts and single equations read best.
 The letters are the Hershey fonts (see `core/third_party/hershey/README.md`).
+
+### Function
+
+A surface: type a formula for z in terms of x and y into the field and each note draws it as a wire
+mesh over a square of the plane, seen in 3D. Use `t`, the time in seconds since the note began, to
+make it move.
+
+| In the formula | Meaning |
+| --- | --- |
+| `x`, `y`, `t` | The two coordinates and the time |
+| `r`, `theta` | Distance from the middle, and angle round it |
+| `+ - * / ^`, brackets | Arithmetic; `^` is a power |
+| `sin cos tan asin acos atan sinh cosh tanh exp log sqrt abs sign floor` | The usual functions |
+| `sinc(u)`, `gauss(u)` | sin(u)/u and exp(-u^2) |
+| `atan2(a, b)`, `min(a, b)`, `max(a, b)`, `pow(a, b)`, `mod(a, b)` | Functions of two values |
+| `pi`, `e` | The constants |
+
+Multiplication must be written: `2*x`, not `2x`. Try `sin(3*r - 4*t) / (1 + r)`, `gauss(r/1.5) * cos(3*x)`,
+`x*y/3`, `sin(x) * cos(y)`. A formula that does not parse draws a flat sheet, and so does the empty
+field; where a formula has no value (a division by zero, say) the surface is put at zero.
+
+| Group | Parameter | What it does |
+| --- | --- | --- |
+| Surface | Range | x and y run from minus this to plus this. |
+| | Height | How tall one unit of z is drawn. The surface is cut off at the top and bottom of the box. |
+| | Wires | How many wires each way. |
+| | Hidden lines | Removed: wires behind the surface are not drawn. Shown: a see-through mesh. |
+| Camera | Azimuth, Elevation | Where you look from: round the surface, and above it. |
+| | Perspective | 0 is a flat, drawing-board view; higher is a closer, wider lens. |
+| | Spin | Turning rate about the vertical axis. |
+
+Hidden lines are found by a quick method that is right for surfaces seen from above and can leave
+small gaps or stray ends where wires cross near an edge.
+
+### Collision
+
+Proton collisions as an LHC detector shows them, looking along the beam. Charged particles leave the
+collision point and curve in the magnet's field, tighter the less momentum they have, so the soft
+ones curl into loops and the hard ones run nearly straight. Jets are sprays of tracks with bars of
+energy in the calorimeter behind them. Muons go straight through everything to the outer edge.
+
+| Group | Parameter | What it does |
+| --- | --- | --- |
+| Event | Event | Auto picks by velocity, the harder the note the rarer the event: up to 35 a quiet "minimum bias" collision, 36 to 65 two jets back to back, 66 to 90 a Z decaying to two muons, 91 to 110 a busy multijet event, above 110 four muons from one point. Or fix the kind, or Random. |
+| | Seed mode | Random: a new event every note. Per key: the same key always gives the same event. Global: one event for everything. |
+| | Pile-up | Extra soft tracks from other collisions in the same crossing. More is a denser, noisier picture. |
+| | Form time | How long the particles take to fly out from the collision point at the start of a note. |
+| Detector | Field | Strength of the magnet: higher curls the tracks more. |
+| | Detector ring | Draws the calorimeter's outer edge. It is a plain circle, so it adds a steady fundamental to the tone. |
+
+These are drawn to look like collisions, with the right kinds of things in the right places; they are
+not simulated physics.
+
+### Mesh
+
+A 3D model. Press the Model button and choose an STL file (binary or ASCII); until you do, it shows a
+torus. The model is centred, scaled to fit, and drawn as its outline, its sharp edges and any open
+edges, joined into long strokes.
+
+| Group | Parameter | What it does |
+| --- | --- | --- |
+| Camera | Azimuth, Elevation, Roll | Where you look from, and the camera's tilt about its line of sight. The model's z axis is up. |
+| | Perspective | 0 is a flat, drawing-board view; higher is a closer, wider lens. |
+| | Zoom | Size of the model in the picture. |
+| Rotation | Spin, Spin axis | Turning rate, and which of the model's own axes it turns about. Spin 0 holds it still. |
+| Edges | Crease angle | An edge is drawn where its two faces meet at more than this angle. Lower draws more of the model's detail. |
+| | Far side | Hidden leaves out edges on faces that point away from you. |
+| | Most edges | A limit: when there are more, the longest are kept. Fewer edges is a clearer picture and a purer tone. |
+
+Models with up to 200,000 triangles are read; more are cut off there. Smooth, simple models work best:
+a scope can draw a few hundred edges clearly, not a scan with every facet. "Far side: Hidden" removes
+faces that point away, but not edges that are in front-facing parts hidden behind something nearer.
+The project stores the file's location, not the model: if the file moves, the torus comes back.
 
 ## CS Mux (effect)
 
@@ -221,7 +310,7 @@ Use the VST3 versions: Live sends MIDI to VST3 effects but not to Audio Unit eff
 
 - The built-in display gathers light 60 times a second and redraws 30 times a second.
 
-- CS Bubble, CS Orbital and CS Script are monophonic.
+- ColliderScope is monophonic in every mode; only CS Chamber plays chords.
 - Played live, a note starts when its first picture arrives from a background thread, up to a
   millisecond or two after the key. Offline bounces are sample-exact.
 - Cycle-lock changes its reported latency when A changes pitch. Some hosts pause briefly to re-plan.
