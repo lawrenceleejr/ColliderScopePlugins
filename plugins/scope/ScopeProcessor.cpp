@@ -1,6 +1,6 @@
 // ColliderScope: one instrument plugin, several things it can draw. The
 // Instrument control picks one: a bubble chamber, hydrogen orbitals, text and
-// equations, a function of two variables, LHC-style collisions, or a 3D model.
+// equations, a function of two variables, LHC-style collisions, a 3D model, or Feynman diagrams.
 #include <map>
 
 #include "InstrumentProcessor.h"
@@ -23,7 +23,7 @@ std::unique_ptr<juce::AudioParameterFloat> num(const char* paramId, const char* 
 
 juce::AudioProcessorValueTreeState::ParameterLayout layout() {
   juce::AudioProcessorValueTreeState::ParameterLayout l;
-  l.add(choice("instrument", "Instrument", {"Bubble", "Orbital", "Script", "Function", "Collision", "Mesh"}, 0));
+  l.add(choice("instrument", "Instrument", {"Bubble", "Orbital", "Script", "Function", "Collision", "Mesh", "Feynman"}, 0));
 
   l.add(choice("b_type", "Bubble: Event", {"Auto", "Electron", "Pair", "Decay", "Beam", "Random"}, 0));
   l.add(choice("b_seedMode", "Bubble: Seed mode", {"Random", "Per key", "Global"}, 0));
@@ -65,6 +65,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout layout() {
   l.add(num("c_pileup", "Collision: Pile-up", Range(0.0f, 1.0f, 0.01f), 0.3f, "", 2));
   l.add(choice("c_detector", "Collision: Detector ring", {"Off", "On"}, 1));
   l.add(num("c_form", "Collision: Form time", Range(0.0f, 300.0f, 1.0f), 60.0f, "ms", 0));
+  l.add(choice("c_view", "Collision: View", {"Along the beam", "3D"}, 0));
+  l.add(num("c_azimuth", "Collision: Azimuth", Range(-180.0f, 180.0f, 1.0f), 35.0f, "deg", 0));
+  l.add(num("c_elevation", "Collision: Elevation", Range(-90.0f, 90.0f, 1.0f), 20.0f, "deg", 0));
+  l.add(num("c_perspective", "Collision: Perspective", Range(0.0f, 1.0f, 0.01f), 0.4f, "", 2));
+  l.add(num("c_spin", "Collision: Spin", Range(-180.0f, 180.0f, 1.0f), 20.0f, "deg/s", 0));
 
   l.add(num("m_azimuth", "Mesh: Azimuth", Range(-180.0f, 180.0f, 1.0f), 30.0f, "deg", 0));
   l.add(num("m_elevation", "Mesh: Elevation", Range(-90.0f, 90.0f, 1.0f), 25.0f, "deg", 0));
@@ -76,6 +81,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout layout() {
   l.add(num("m_crease", "Mesh: Crease angle", Range(1.0f, 90.0f, 1.0f), 30.0f, "deg", 0));
   l.add(choice("m_cull", "Mesh: Far side", {"Shown", "Hidden"}, 1));
   l.add(whole("m_edges", "Mesh: Most edges", 50, 2000, 600));
+
+  juce::StringArray diagrams{"Auto"};
+  for (const cs::FeynmanDiagram& diagram : cs::feynmanDiagrams())
+    diagrams.add(diagram.name);
+  l.add(choice("k_diagram", "Feynman: Diagram", diagrams, 0));
+  l.add(num("k_form", "Feynman: Form time", Range(0.0f, 500.0f, 1.0f), 80.0f, "ms", 0));
+  l.add(num("k_wiggle", "Feynman: Wiggle", Range(0.3f, 3.0f, 0.01f), 1.0f, "", 2));
+  l.add(num("k_motion", "Feynman: Motion", Range(-4.0f, 4.0f, 0.01f), 1.0f, "/s", 2));
+  l.add(choice("k_arrows", "Feynman: Arrows", {"Off", "On"}, 1));
 
   addVoice(l);
   return l;
@@ -90,7 +104,8 @@ public:
           "s_slant",    "f_range", "f_height",   "f_lines",    "f_hidden",    "f_azimuth",    "f_elevation",   "f_perspective",
           "f_spin",     "c_event", "c_seedMode", "c_field",    "c_pileup",    "c_detector",   "c_form",        "m_azimuth",
           "m_elevation", "m_roll", "m_perspective", "m_zoom",  "m_spin",      "m_axis",       "m_crease",      "m_cull",
-          "m_edges"})
+          "m_edges",    "c_view",  "c_azimuth",  "c_elevation", "c_perspective", "c_spin",     "k_diagram",     "k_form",
+          "k_wiggle",   "k_motion", "k_arrows"})
       values_[id] = raw(id);
     setText(kDefaultText);
     setFunction(kDefaultFunction);
@@ -171,7 +186,11 @@ private:
       break;
     case cs::Instrument::Collision:
       cs::Editor::addGroups(panel, {{"Event", {"c_event", "c_seedMode", "c_pileup", "c_form"}},
-                                    {"Detector", {"c_field", "c_detector"}}});
+                                    {"Detector", {"c_field", "c_detector"}},
+                                    {"View", {"c_view", "c_azimuth", "c_elevation", "c_perspective", "c_spin"}}});
+      break;
+    case cs::Instrument::Feynman:
+      cs::Editor::addGroups(panel, {{"Diagram", {"k_diagram", "k_form", "k_arrows"}}, {"Waves", {"k_wiggle", "k_motion"}}});
       break;
     case cs::Instrument::Mesh:
       panel.addButton("Model", meshLabel(), [this, &panel] { chooseMesh(panel); });
@@ -238,6 +257,15 @@ private:
     p.collision.pileup = v("c_pileup");
     p.collision.detector = i("c_detector") == 1;
     p.collision.formMs = v("c_form");
+    p.collision.threeD = i("c_view") == 1;
+    p.collision.camera = {v("c_azimuth"), v("c_elevation"), 0.0, v("c_perspective")};
+    p.collision.spin = v("c_spin");
+
+    p.feynman.diagram = i("k_diagram");
+    p.feynman.formMs = v("k_form");
+    p.feynman.wiggle = v("k_wiggle");
+    p.feynman.motion = v("k_motion");
+    p.feynman.arrows = i("k_arrows") == 1;
 
     p.mesh.camera = {v("m_azimuth"), v("m_elevation"), v("m_roll"), v("m_perspective")};
     p.mesh.zoom = v("m_zoom");
@@ -252,7 +280,7 @@ private:
   // Not used: this plugin lays its own panel out.
   std::vector<cs::ParamGroup> groups() const override { return {}; }
 
-  // Instrument: 0 Bubble, 1 Orbital, 2 Script, 3 Function, 4 Collision, 5 Mesh.
+  // Instrument: 0 Bubble, 1 Orbital, 2 Script, 3 Function, 4 Collision, 5 Mesh, 6 Feynman.
   const std::vector<cs::Preset>& presets() const override {
     static const std::vector<cs::Preset> list = {
         {"Bubble: spiral bass",
@@ -277,6 +305,12 @@ private:
         {"Collision: four muons",
          {{"instrument", 4}, {"c_event", 5}, {"c_seedMode", 1}, {"c_field", 0.5f}, {"c_pileup", 0.1f}, {"c_detector", 1},
           {"c_form", 30}, {"release", 120}}},
+        {"Collision: 3D, turning",
+         {{"instrument", 4}, {"c_event", 0}, {"c_view", 1}, {"c_azimuth", 35}, {"c_elevation", 20}, {"c_perspective", 0.4f},
+          {"c_spin", 20}, {"c_detector", 1}, {"c_pileup", 0.2f}, {"release", 150}}},
+        {"Feynman: by velocity",
+         {{"instrument", 6}, {"k_diagram", 0}, {"k_form", 80}, {"k_wiggle", 1.0f}, {"k_motion", 1.0f}, {"k_arrows", 1},
+          {"release", 100}}},
         {"Mesh: turntable",
          {{"instrument", 5}, {"m_azimuth", 30}, {"m_elevation", 25}, {"m_roll", 0}, {"m_perspective", 0.3f}, {"m_zoom", 0.9f},
           {"m_spin", 30}, {"m_axis", 2}, {"m_crease", 30}, {"m_cull", 1}, {"m_edges", 600}, {"release", 200}}},

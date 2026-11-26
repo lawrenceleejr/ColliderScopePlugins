@@ -3,8 +3,8 @@
 Three plugins for oscilloscope music:
 
 - **CS Chamber**, an instrument: cloud-chamber tracks, with chords.
-- **ColliderScope**, an instrument with six modes, chosen with its Instrument menu: Bubble, Orbital,
-  Script, Function, Collision and Mesh.
+- **ColliderScope**, an instrument with seven modes, chosen with its Instrument menu: Bubble, Orbital,
+  Script, Function, Collision, Mesh and Feynman.
 - **CS Mux**, an effect that shows two pictures on one scope.
  In XY mode the left channel is X and the right channel is Y, so the sound is the
 picture: every setting below changes both.
@@ -112,9 +112,9 @@ brighter, than one rounded down.
 
 ## ColliderScope (instrument)
 
-One monophonic instrument that can draw six kinds of picture. The Instrument menu at the top of the
+One monophonic instrument that can draw seven kinds of picture. The Instrument menu at the top of the
 window picks the kind, and the panel shows that kind's controls, followed by the Voice and Output
-controls, which are the same as CS Chamber's and are shared by all six. Presets are named by
+controls, which are the same as CS Chamber's and are shared by all seven. Presets are named by
 instrument and switch to it. A host sees every instrument's parameters at once, named "Bubble: Field",
 "Mesh: Zoom" and so on.
 
@@ -237,6 +237,12 @@ energy in the calorimeter behind them. Muons go straight through everything to t
 | Detector | Field | Strength of the magnet: higher curls the tracks more. |
 | | Detector ring | Draws the calorimeter's outer edge. It is a plain circle, so it adds a steady fundamental to the tone. |
 
+| View | View | Along the beam: the flat picture described above. 3D: the detector as a barrel lying along the beam, with the tracks as helices inside it and the towers on its wall. |
+| | Azimuth, Elevation, Perspective, Spin | The 3D view's camera, and how fast the barrel turns about the beam. They do nothing in the flat view. |
+
+In 3D each particle also has a direction along the beam: forward ones leave by the end of the barrel
+rather than its side. The same event can be looked at either way by switching View.
+
 These are drawn to look like collisions, with the right kinds of things in the right places; they are
 not simulated physics.
 
@@ -260,6 +266,24 @@ Models with up to 200,000 triangles are read; more are cut off there. Smooth, si
 a scope can draw a few hundred edges clearly, not a scan with every facet. "Far side: Hidden" removes
 faces that point away, but not edges that are in front-facing parts hidden behind something nearer.
 The project stores the file's location, not the model: if the file moves, the torus comes back.
+
+### Feynman
+
+Feynman diagrams, with time running from left to right. Fermions are straight lines with an arrow,
+photons and W bosons are wavy, gluons are curly, the Higgs is dashed, and each vertex is a dot.
+
+| Group | Parameter | What it does |
+| --- | --- | --- |
+| Diagram | Diagram | Auto picks by velocity, the harder the note the more complicated: up to 40 a simple tree diagram, 41 to 80 one with gluons or a correction, 81 to 110 a loop or a box, above 110 one with a Higgs; the key picks which. Or choose one of the ten. |
+| | Form time | The diagram is drawn in from left to right over this time at the start of a note. |
+| | Arrows | The arrows on the fermion lines. |
+| Waves | Wiggle | How tightly the photons wave and the gluons curl. Tighter adds higher overtones. |
+| | Motion | The waves run along their lines, this many per second. 0 holds them still. |
+
+The ten diagrams: annihilation to a photon, photon exchange, Compton scattering, a quark pair to
+three gluons, the electron's self-energy, beta decay, vacuum polarisation, the two-photon box, gluon
+fusion to a Higgs through a top-quark loop, and a Higgs decaying to two photons. They are drawn from
+fixed layouts, not generated from a theory, and you cannot type in your own.
 
 ## CS Mux (effect)
 

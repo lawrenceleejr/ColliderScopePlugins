@@ -42,6 +42,14 @@ done
 for event in minbias dijet zmumu multijet fourmuon; do
   "$csrender" notes --instrument collision --event "$event" --seed 3 --notes 57:0:1:80 --at 0.6 --out "$out/collision_$event"
 done
+# Collision in 3D: helices in a barrel.
+for event in dijet fourmuon; do
+  "$csrender" notes --instrument collision --3d 1 --spin 0 --event "$event" --seed 3 --notes 57:0:1:80 --at 0.6 --out "$out/collision_3d_$event"
+done
+# Feynman: every diagram.
+for diagram in 1 2 3 4 5 6 7 8 9 10; do
+  "$csrender" notes --instrument feynman --diagram "$diagram" --motion 0 --notes 57:0:0.6:80 --at 0.5 --out "$out/feynman_$diagram"
+done
 # Mesh: the built-in torus from two cameras.
 "$csrender" notes --instrument mesh --notes 57:0:1:80 --at 0.5 --out "$out/mesh_torus"
 "$csrender" notes --instrument mesh --elevation 60 --perspective 0.8 --axis x --notes 57:0:1:80 --at 0.5 --out "$out/mesh_torus_close"

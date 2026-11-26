@@ -100,9 +100,10 @@ jobs:
           "$root/mux/csmux_uisnap_artefacts/Release/csmux_uisnap" cs_mux_interleave.png
           "$root/mux/csmux_uisnap_artefacts/Release/csmux_uisnap" cs_mux_cycle_lock.png mode=Cycle-lock
           scope="$root/scope/colliderscope_uisnap_artefacts/Release/colliderscope_uisnap"
-          for instrument in Bubble Orbital Script Function Collision Mesh; do
+          for instrument in Bubble Orbital Script Function Collision Mesh Feynman; do
             "$scope" "colliderscope_$instrument.png" "instrument=$instrument"
           done
+          "$scope" colliderscope_Collision_3D.png instrument=Collision c_view=3D
 
       - name: Package
         run: |

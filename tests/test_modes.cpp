@@ -429,6 +429,219 @@ TEST_CASE("Mesh: pitch, picture and hard rest; a model can be swapped in", "[mes
   CHECK(peakRadius(play(fitted, p, 57, 80, 0.4, 0.0)) <= 0.95);
 }
 
+// --------------------------------------------------------------- Collision, 3D
+
+TEST_CASE("Collision 3D: tracks are helices that leave by the side or the end of the barrel", "[collision]") {
+  // Straight out sideways: no different from the flat view.
+  const cs::CollisionTrack sideways{0.4, 1.0, +1, false, 0.0};
+  const auto flat3 = cs::collisionTrackPath3D(sideways, 0.5);
+  const cs::Stroke flat = cs::collisionTrackPath(sideways, 0.5);
+  REQUIRE(flat3.size() == flat.size());
+  for (std::size_t i = 0; i < flat.size(); ++i) {
+    CHECK(flat3[i].z == 0.0);
+    CHECK(flat3[i].x == flat[i].x);
+  }
+  // Forward: it climbs along the beam at a steady rate, and the flat view ignores that.
+  const cs::CollisionTrack forward{20.0, 1.0, +1, false, 1.0};
+  const auto helix = cs::collisionTrackPath3D(forward, 0.5);
+  for (std::size_t i = 1; i < helix.size(); ++i)
+    CHECK_THAT(helix[i].z - helix[i - 1].z, WithinAbs(std::sinh(1.0) * 0.012, 1e-12));
+  CHECK(cs::collisionTrackPath(forward, 0.5).size() > 30);
+  // Very forward: out of the end of the barrel before it reaches the side.
+  const auto endcap = cs::collisionTrackPath3D({20.0, 1.0, +1, false, 2.5}, 0.5);
+  CHECK_THAT(std::abs(endcap.back().z), WithinAbs(cs::kBarrelHalfLength, 0.08));
+  CHECK(std::hypot(endcap.back().x, endcap.back().y) < cs::kTrackerRadius);
+  // Backward goes the other way.
+  CHECK(cs::collisionTrackPath3D({20.0, 1.0, +1, false, -1.0}, 0.5).back().z < 0.0);
+}
+
+TEST_CASE("Collision 3D: pitch, picture and hard rest from any camera", "[collision][acceptance]") {
+  cs::CollisionParams p;
+  p.threeD = true;
+  p.event = cs::CollisionEvent::Multijet;
+  SECTION("pitch and rest") {
+    p.spin = 0.0;
+    checkPitchAndRest<cs::CollisionEngine>(p);
+  }
+  SECTION("within r <= 0.95") {
+    p.voice.size = 1.0;
+    p.spin = 120.0;
+    for (double elevation : {0.0, 45.0, 90.0})
+      for (double perspective : {0.0, 1.0}) {
+        p.camera = {elevation * 2.0, elevation, 10.0, perspective};
+        cs::CollisionEngine voice;
+        const Render r = play(voice, p, 57, 80, 0.4, 0.0);
+        CAPTURE(elevation, perspective);
+        CHECK(peakRadius(r) <= 0.95);
+        CHECK(peakRadius(r) > 0.3);
+      }
+  }
+  SECTION("the 3D view is a different picture from the flat one") {
+    p.spin = 0.0;
+    p.seedMode = cs::CollisionSeed::Global;
+    cs::CollisionEngine three, flat;
+    const Render a = play(three, p, 57, 80, 0.3, 0.0);
+    p.threeD = false;
+    const Render b = play(flat, p, 57, 80, 0.3, 0.0);
+    double difference = 0.0;
+    for (std::size_t i = 9600; i < a.x.size(); ++i)
+      difference = std::max(difference, static_cast<double>(std::abs(a.x[i] - b.x[i])));
+    CHECK(difference > 0.1);
+  }
+}
+
+// --------------------------------------------------------------------- Feynman
+
+TEST_CASE("Feynman: each kind of line has its shape", "[feynman]") {
+  const cs::Vec2 a{-0.5, 0.0}, b{0.5, 0.0};
+  cs::FeynmanParams p;
+  auto draw = [&](cs::FeynmanLine kind, double bulge = 0.0, double phase = 0.0) {
+    std::vector<cs::Stroke> out;
+    cs::feynmanStrokes(a, b, {0, 1, kind, bulge}, p, phase, out);
+    return out;
+  };
+  SECTION("a fermion is a straight line with an arrow pointing along it") {
+    const auto strokes = draw(cs::FeynmanLine::Fermion);
+    REQUIRE(strokes.size() == 2);
+    CHECK(strokes[0].front().x == -0.5);
+    CHECK(strokes[0].back().x == 0.5);
+    const cs::Stroke& arrow = strokes[1];
+    REQUIRE(arrow.size() == 3);
+    CHECK(arrow[1].x > arrow[0].x); // the point leads
+    CHECK(arrow[1].x > arrow[2].x);
+    CHECK_THAT(arrow[1].y, WithinAbs(0.0, 1e-12));
+    CHECK_THAT(arrow[0].y, WithinAbs(-arrow[2].y, 1e-12));
+    p.arrows = false;
+    CHECK(draw(cs::FeynmanLine::Fermion).size() == 1);
+  }
+  SECTION("a photon waves about its line and meets both ends") {
+    const auto strokes = draw(cs::FeynmanLine::Photon);
+    REQUIRE(strokes.size() == 1);
+    const cs::Stroke& wave = strokes[0];
+    CHECK_THAT(wave.front().x, WithinAbs(-0.5, 1e-9));
+    CHECK_THAT(wave.front().y, WithinAbs(0.0, 1e-9));
+    CHECK_THAT(wave.back().x, WithinAbs(0.5, 1e-9));
+    CHECK_THAT(wave.back().y, WithinAbs(0.0, 1e-9));
+    int crossings = 0;
+    double height = 0.0;
+    for (std::size_t i = 1; i < wave.size(); ++i) {
+      crossings += (wave[i].y > 0.0) != (wave[i - 1].y > 0.0);
+      height = std::max(height, std::abs(wave[i].y));
+    }
+    CHECK(crossings >= 16); // 9 waves over a length of 1
+    CHECK(crossings <= 20);
+    CHECK_THAT(height, WithinAbs(0.032, 0.002));
+    // Wiggle packs more waves in; the phase moves them along.
+    p.wiggle = 2.0;
+    int tighter = 0;
+    const cs::Stroke tight = draw(cs::FeynmanLine::Photon)[0];
+    for (std::size_t i = 1; i < tight.size(); ++i)
+      tighter += (tight[i].y > 0.0) != (tight[i - 1].y > 0.0);
+    CHECK(tighter > crossings + 10);
+    p.wiggle = 1.0;
+    const cs::Stroke moved = draw(cs::FeynmanLine::Photon, 0.0, 0.25)[0];
+    CHECK(std::abs(moved[moved.size() / 2].y - wave[wave.size() / 2].y) > 0.01);
+  }
+  SECTION("a gluon coils: the beam goes backward as well as forward") {
+    const cs::Stroke coil = draw(cs::FeynmanLine::Gluon)[0];
+    int backward = 0;
+    double reach = 0.0;
+    for (std::size_t i = 1; i < coil.size(); ++i) {
+      backward += coil[i].x < coil[i - 1].x;
+      reach = std::max(reach, std::abs(coil[i].y));
+    }
+    CHECK(backward > static_cast<int>(coil.size()) / 8);
+    CHECK(reach < 0.09);
+    CHECK_THAT(coil.front().x, WithinAbs(-0.5, 1e-9));
+    CHECK_THAT(coil.back().x, WithinAbs(0.5, 1e-9));
+  }
+  SECTION("a scalar is dashed") {
+    const auto dashes = draw(cs::FeynmanLine::Scalar);
+    CHECK(dashes.size() == 10);
+    for (const cs::Stroke& dash : dashes) {
+      CHECK(dash.size() == 2);
+      CHECK_THAT(dash[0].y, WithinAbs(0.0, 1e-12));
+      CHECK_THAT(dash[1].x - dash[0].x, WithinAbs(0.06, 1e-9));
+    }
+  }
+  SECTION("a bulge bends the line to one side") {
+    const cs::Stroke arc = draw(cs::FeynmanLine::Fermion, 0.5)[0];
+    CHECK_THAT(arc[arc.size() / 2].y, WithinAbs(0.5, 1e-9)); // half its length high, at the middle
+    CHECK_THAT(arc.front().y, WithinAbs(0.0, 1e-12));
+  }
+}
+
+TEST_CASE("Feynman: the diagrams are well formed, and velocity picks how complicated", "[feynman]") {
+  const auto& diagrams = cs::feynmanDiagrams();
+  REQUIRE(diagrams.size() == 10);
+  for (const cs::FeynmanDiagram& d : diagrams) {
+    CAPTURE(d.name);
+    CHECK(d.external >= 2);
+    std::vector<int> uses(d.vertices.size(), 0);
+    for (const cs::FeynmanEdge& e : d.edges) {
+      REQUIRE(e.from >= 0);
+      REQUIRE(e.to < static_cast<int>(d.vertices.size()));
+      ++uses[static_cast<std::size_t>(e.from)];
+      ++uses[static_cast<std::size_t>(e.to)];
+    }
+    for (std::size_t i = 0; i < uses.size(); ++i) {
+      if (static_cast<int>(i) < d.external)
+        CHECK(uses[i] == 1); // a loose end has one line
+      else
+        CHECK(uses[i] >= 3); // a vertex joins three or more
+    }
+    for (const cs::Vec2& v : d.vertices)
+      CHECK(std::hypot(v.x, v.y) <= 0.95);
+  }
+  auto name = [&](int note, int velocity) { return std::string(diagrams[static_cast<std::size_t>(cs::FeynmanSource::autoDiagram(note, velocity) - 1)].name); };
+  CHECK(name(60, 20) == "Annihilation");
+  CHECK(name(61, 20) == "Exchange");
+  CHECK(name(60, 60) == "Three gluons");
+  CHECK(name(60, 100) == "Vacuum polarisation");
+  CHECK(name(60, 127) == "Gluon fusion");
+  CHECK(name(61, 127) == "Higgs to photons");
+}
+
+TEST_CASE("Feynman: pitch, picture and hard rest", "[feynman][acceptance]") {
+  cs::FeynmanParams p;
+  SECTION("pitch and rest") {
+    p.motion = 0.0;
+    p.diagram = GENERATE(1, 4, 9);
+    checkPitchAndRest<cs::FeynmanEngine>(p);
+  }
+  SECTION("every diagram stays within r <= 0.95, waves running") {
+    p.voice.size = 1.0;
+    p.motion = 3.0;
+    p.wiggle = 3.0;
+    for (int diagram = 1; diagram <= 10; ++diagram) {
+      p.diagram = diagram;
+      cs::FeynmanEngine voice;
+      const Render r = play(voice, p, 57, 80, 0.4, 0.0);
+      CAPTURE(diagram);
+      CHECK(peakRadius(r) <= 0.95);
+      CHECK(peakRadius(r) > 0.6);
+    }
+  }
+  SECTION("time runs left to right: the diagram is drawn in") {
+    p.diagram = 1;
+    p.formMs = 300.0;
+    p.voice.size = 1.0;
+    cs::FeynmanEngine voice;
+    const Render r = play(voice, p, 57, 80, 0.5, 0.0);
+    auto rightmost = [&](double at) {
+      float best = -1.0f;
+      const auto from = static_cast<std::size_t>(at * kSampleRate);
+      for (std::size_t i = from; i < from + 480; ++i)
+        best = std::max(best, r.x[i]);
+      return best;
+    };
+    CHECK(rightmost(0.05) < -0.4);
+    CHECK(rightmost(0.05) < rightmost(0.15));
+    CHECK(rightmost(0.15) < rightmost(0.25));
+    CHECK_THAT(rightmost(0.4), WithinAbs(0.8, 0.02));
+  }
+}
+
 // ----------------------------------------------------------------------- Multi
 
 TEST_CASE("ColliderScope: every instrument plays, and they can be switched mid-note", "[multi]") {

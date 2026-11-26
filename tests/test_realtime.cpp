@@ -259,8 +259,16 @@ TEST_CASE("CPU: CS Bubble and CS Orbital under 5 % of one core", "[realtime][acc
   busy.pileup = 1.0;
   const double collision = cpuPercent<cs::CollisionEngine>(busy);
   const double mesh = cpuPercent<cs::MeshEngine>({});
-  WARN("function: " << function << " % of a core; collision: " << collision << " %; mesh: " << mesh
-                    << " %, audio plus picture building");
+  busy.threeD = true;
+  const double collision3d = cpuPercent<cs::CollisionEngine>(busy);
+  cs::FeynmanParams loops;
+  loops.diagram = 8;
+  loops.wiggle = 3.0;
+  const double feynman = cpuPercent<cs::FeynmanEngine>(loops);
+  WARN("function: " << function << " % of a core; collision: " << collision << " %; collision 3D: " << collision3d
+                    << " %; mesh: " << mesh << " %; feynman: " << feynman << " %, audio plus picture building");
+  CHECK(collision3d < 5.0);
+  CHECK(feynman < 5.0);
   CHECK(function < 5.0);
   CHECK(collision < 5.0);
   CHECK(mesh < 5.0);

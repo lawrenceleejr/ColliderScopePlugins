@@ -4,9 +4,10 @@ Three macOS audio plugins (VST3 + AU) for ColliderScope oscilloscope music, on o
 In XY mode left = X and right = Y, so the sound is the picture.
 
 - **CS Chamber**, a MIDI instrument. Each note births a cloud-chamber track drawn as an XY loop pitched to the note. Plays chords.
-- **ColliderScope**, a MIDI instrument with six modes on one Instrument menu:
+- **ColliderScope**, a MIDI instrument with seven modes on one Instrument menu:
   Bubble (a bubble chamber), Orbital (hydrogen orbital surfaces), Script (text and equations in a LaTeX-like syntax),
-  Function (a surface z = f(x, y) from a typed formula), Collision (LHC-style event displays) and Mesh (an STL model).
+  Function (a surface z = f(x, y) from a typed formula), Collision (LHC-style event displays, flat or 3D), Mesh (an STL model)
+  and Feynman (Feynman diagrams).
 - **CS Mux**, an effect. It serializes two XY sources (main input and sidechain) so both pictures show without distorting each other.
 
 All three are built. How to install, wire and play them is in [docs/manual.md](docs/manual.md).
