@@ -39,6 +39,8 @@ if(CS_BUILD_PLUGINS)
   FetchContent_MakeAvailable(JUCE)
   add_subdirectory(plugins/chamber)
   add_subdirectory(plugins/mux)
+  add_subdirectory(plugins/bubble)
+  add_subdirectory(plugins/orbital)
 endif()
 
 if(CS_BUILD_TESTS)
