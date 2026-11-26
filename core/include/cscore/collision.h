@@ -12,6 +12,7 @@
 #include "cscore/mono_engine.h"
 #include "cscore/path.h"
 #include "cscore/rng.h"
+#include "cscore/view3d.h"
 
 namespace cs {
 
@@ -27,6 +28,11 @@ struct CollisionParams {
   bool detector = true;  // draw the calorimeter's outer ring
   double formMs = 60.0;  // 0-300 ms: time for the tracks to fly out from the collision point
   std::uint64_t seed = 1;
+  // The view: along the beam, as a flat picture, or in 3D, where the tracks
+  // are helices in a barrel-shaped detector and the camera can be placed.
+  bool threeD = false;
+  Camera camera{35.0, 20.0, 0.0, 0.4};
+  double spin = 20.0;    // -180..180 degrees per second about the beam, in the 3D view
 };
 
 struct CollisionTrack {
@@ -34,10 +40,12 @@ struct CollisionTrack {
   double phi = 0.0; // direction at the collision point, radians
   int charge = 1;
   bool muon = false; // reaches the muon chambers
+  double eta = 0.0;  // pseudorapidity: how far forward along the beam it goes (0 = straight out sideways)
 };
 struct CollisionTower {
   double phi = 0.0, energy = 0.1; // energy as a length, 0-1 of the calorimeter's depth
   bool hadronic = false;          // outer layer; else the inner, electromagnetic one
+  double eta = 0.0;
 };
 
 // Radii of the detector, in picture units.
@@ -48,6 +56,11 @@ inline constexpr double kTrackerRadius = 0.52, kEcalRadius = 0.56, kHcalRadius =
 // the origin, out to the tracker's edge (or to the muon chambers). A track
 // with too little momentum to get out curls round once and stops.
 Stroke collisionTrackPath(const CollisionTrack& track, double field);
+
+// The same track in 3D: a helix. x, y are across the beam and z along it,
+// in the same units; it stops at the end of the barrel, |z| = kBarrelHalfLength.
+inline constexpr double kBarrelHalfLength = 0.9;
+std::vector<Vec3> collisionTrackPath3D(const CollisionTrack& track, double field);
 
 class CollisionSource {
 public:

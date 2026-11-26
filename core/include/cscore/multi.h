@@ -7,6 +7,7 @@
 
 #include "cscore/bubble.h"
 #include "cscore/collision.h"
+#include "cscore/feynman.h"
 #include "cscore/mesh.h"
 #include "cscore/mono_engine.h"
 #include "cscore/orbital.h"
@@ -15,8 +16,8 @@
 
 namespace cs {
 
-enum class Instrument { Bubble, Orbital, Script, Function, Collision, Mesh };
-inline constexpr int kInstrumentCount = 6;
+enum class Instrument { Bubble, Orbital, Script, Function, Collision, Mesh, Feynman };
+inline constexpr int kInstrumentCount = 7;
 
 struct MultiParams {
   VoiceParams voice; // shared by every instrument
@@ -27,6 +28,7 @@ struct MultiParams {
   SurfaceParams surface;
   CollisionParams collision;
   MeshParams mesh;
+  FeynmanParams feynman;
 };
 
 class MultiSource {
@@ -44,6 +46,8 @@ public:
       return SurfaceSource::rebuildSeconds(p.surface);
     case Instrument::Collision:
       return CollisionSource::rebuildSeconds(p.collision);
+    case Instrument::Feynman:
+      return FeynmanSource::rebuildSeconds(p.feynman);
     case Instrument::Mesh:
       break;
     }
@@ -57,6 +61,7 @@ public:
     surface_.prepare(sampleRate);
     collision_.prepare(sampleRate);
     mesh_.prepare(sampleRate);
+    feynman_.prepare(sampleRate);
   }
 
   void birth(const Params& params, int note, int velocity, std::uint32_t serial) {
@@ -77,6 +82,8 @@ public:
       return collision_.birth(with(params.collision, params), note, velocity, serial);
     case Instrument::Mesh:
       return mesh_.birth(with(params.mesh, params), note, velocity, serial);
+    case Instrument::Feynman:
+      return feynman_.birth(with(params.feynman, params), note, velocity, serial);
     }
   }
 
@@ -96,6 +103,8 @@ public:
       return collision_.build(with(params.collision, params), note, age, table);
     case Instrument::Mesh:
       return mesh_.build(with(params.mesh, params), note, age, table);
+    case Instrument::Feynman:
+      return feynman_.build(with(params.feynman, params), note, age, table);
     }
   }
 
@@ -120,6 +129,7 @@ private:
   SurfaceSource surface_;
   CollisionSource collision_;
   MeshSource mesh_;
+  FeynmanSource feynman_;
   Instrument born_ = Instrument::Bubble;
   int note_ = 69, velocity_ = 80;
   std::uint32_t serial_ = 1;

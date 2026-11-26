@@ -5,6 +5,7 @@ add_library(cscore STATIC
   src/collision.cpp
   src/cscore.cpp
   src/expr.cpp
+  src/feynman.cpp
   src/hits.cpp
   src/mesh.cpp
   src/mux_engine.cpp

@@ -22,9 +22,10 @@ const char* kUsage =
     "  csrender notes --out PREFIX [--notes NOTE:START:DUR[:VEL],...] [options]\n"
     "      Play a note list through an instrument: --instrument chamber (default), bubble, orbital, script, function, collision or mesh.\n"
     "      function:  --function 'sin(3*r - 4*t) / (1 + r)'   --range R   --height H   --lines N   --hidden 0|1   --spin DEG/S\n"
-    "      collision: --event auto|minbias|dijet|zmumu|multijet|fourmuon|random   --field F   --pileup P   --detector 0|1   --form MS\n"
+    "      collision: --event auto|minbias|dijet|zmumu|multijet|fourmuon|random   --field F   --pileup P   --detector 0|1   --form MS   --3d 0|1\n"
+    "      feynman:   --diagram N (0 = auto, 1-10)   --form MS   --wiggle W   --motion CYCLES/S   --arrows 0|1\n"
     "      mesh:      --stl FILE.stl   --zoom Z   --spin DEG/S   --axis x|y|z   --crease DEG   --cull 0|1   --edges N\n"
-    "      function and mesh also take a camera: --azimuth DEG   --elevation DEG   --roll DEG   --perspective 0..1\n"
+    "      function, mesh and collision in 3D also take a camera: --azimuth DEG   --elevation DEG   --roll DEG   --perspective 0..1\n"
     "      script:  --text 'E = mc^2' (LaTeX-like: ^ _ \\frac \\sqrt \\alpha ...)   --write MS   --slant S\n"
     "      bubble:  --type auto|electron|pair|decay|beam|random   --field F   --bubbles N   --growth R   --boil B   --form MS\n"
     "      orbital: --orbital auto|1s|2s|2pz|2px|3dz2|...|4fz3   --spin DEG/S   --tilt DEG   --lines N   --level L   --bloom MS\n"
@@ -255,7 +256,24 @@ csio::Audio renderCollision(const Args& args, double sampleRate) {
   p.pileup = args.num("pileup", p.pileup);
   p.detector = args.num("detector", 1) != 0;
   p.formMs = args.num("form", p.formMs);
+  p.threeD = args.num("3d", 0) != 0;
+  p.spin = args.num("spin", p.spin);
+  readCamera(args, p.camera);
   cs::CollisionEngine voice;
+  voice.prepare(sampleRate);
+  voice.setParams(p);
+  return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
+}
+
+csio::Audio renderFeynman(const Args& args, double sampleRate) {
+  cs::FeynmanParams p;
+  readVoice(args, p.voice);
+  p.diagram = static_cast<int>(args.num("diagram", 0)); // 0 = auto, 1.. = by number
+  p.formMs = args.num("form", p.formMs);
+  p.wiggle = args.num("wiggle", p.wiggle);
+  p.motion = args.num("motion", p.motion);
+  p.arrows = args.num("arrows", 1) != 0;
+  cs::FeynmanEngine voice;
   voice.prepare(sampleRate);
   voice.setParams(p);
   return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
@@ -298,6 +316,8 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
     return renderCollision(args, sampleRate);
   if (instrument == "mesh")
     return renderMesh(args, sampleRate);
+  if (instrument == "feynman")
+    return renderFeynman(args, sampleRate);
   if (instrument == "script")
     return renderScript(args, sampleRate);
   if (instrument == "bubble")
@@ -305,7 +325,7 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
   if (instrument == "orbital")
     return renderOrbital(args, sampleRate);
   if (instrument != "chamber")
-    fail("unknown instrument '" + instrument + "' (chamber, bubble, orbital, script, function, collision, mesh)");
+    fail("unknown instrument '" + instrument + "' (chamber, bubble, orbital, script, function, collision, mesh, feynman)");
   cs::ChamberParams p;
   p.type = choose<cs::TypeMode>(args, "type",
                                 {{"auto", cs::TypeMode::Auto},
