@@ -53,7 +53,7 @@ key that is still held.
 | | Attack, Release | Grow and shrink times. Release 0 is a hard rest: silent within half a millisecond. |
 | | Glide | Slide time between overlapping notes. |
 | | Bend range | Pitch-wheel range in semitones. In Drone mode the wheel bends the root. |
-| Output | Quality | Scope-exact: no filtering, the truest picture. Clean: 4x oversampled with a gentle low-pass, less aliasing in the sound, corners very slightly rounded, 4 samples of latency. |
+| Output | Quality | Scope-exact: no filtering, the truest picture. Clean: 4x oversampled with a gentle low-pass, less aliasing in the sound, 4 samples of latency. Corners round very slightly and the beam overshoots a little where it jumps. |
 | | Output gain | Trim. |
 | | Persistence | How long the built-in display glows. Does not affect the sound. |
 
