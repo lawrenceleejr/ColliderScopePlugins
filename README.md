@@ -34,7 +34,7 @@ ctest --test-dir build --output-on-failure
 Options: `-DCS_BUILD_PLUGINS=OFF` builds only the core, `csrender` and tests (any platform);
 `-DCS_COPY_PLUGINS=ON` installs the plugins into `~/Library/Audio/Plug-Ins` after building.
 
-CI (GitHub Actions, macOS 14) builds on every push, runs the tests, validates with pluginval
+CI (GitHub Actions, macOS 15 runner; the macOS 14 image is deprecated) builds on every push, runs the tests, validates with pluginval
 (strictness 5) and auval, and uploads the zipped plugins as an artifact.
 
 ## Install
