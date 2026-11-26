@@ -263,6 +263,9 @@ void MuxEngine::process(const float* ax, const float* ay, const float* bx, const
     const XY a = a_.place(ax[i], ay[i]);
     const XY b = b_.place(rawBx, rawBy);
     peakA_ = std::max(radius(a), peakA_ * peakDecay_);
+    // How fast each source draws, in distance per sample.
+    a_.speed += (dist(a, a_.last) - a_.speed) * 0.01;
+    b_.speed += (dist(b, b_.last) - b_.speed) * 0.01;
     a_.last = a;
     b_.last = b;
     if (needPitch) {
@@ -298,11 +301,10 @@ void MuxEngine::process(const float* ax, const float* ay, const float* bx, const
     MuxTag tag = src;
     if (src != lastSrc_) {
       lastSrc_ = src;
-      const double travel = params_.jumpWeight * step / std::max(speedSmooth_, 1e-5);
-      travelLeft_ = static_cast<int>(std::min(travel, 0.002 * sampleRate_));
+      // Drawing speed: the faster source's, with a floor so a parked source cannot stall the beam.
+      const double speed = std::max({a_.speed, b_.speed, 1e-3});
+      travelLeft_ = static_cast<int>(std::min(params_.jumpWeight * step / speed, 0.002 * sampleRate_));
       zHold_ = 2;
-    } else if (travelLeft_ == 0) {
-      speedSmooth_ += (step - speedSmooth_) * 0.01; // how fast the beam draws, per sample
     }
     XY out = target;
     if (travelLeft_ > 0) {

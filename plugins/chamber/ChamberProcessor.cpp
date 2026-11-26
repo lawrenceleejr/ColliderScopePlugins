@@ -17,7 +17,7 @@ std::unique_ptr<Float> number(const char* paramId, const char* name, Range range
       juce::AudioParameterFloatAttributes()
           .withStringFromValueFunction([unit, decimals](float v, int) {
             const juce::String u(unit);
-            return juce::String(v, decimals) + (u.isEmpty() ? u : " " + u);
+            return juce::String(std::abs(v) < 1e-6f ? 0.0f : v, decimals) + (u.isEmpty() ? u : " " + u);
           })
           .withValueFromStringFunction([](const juce::String& s) { return s.getFloatValue(); }));
 }

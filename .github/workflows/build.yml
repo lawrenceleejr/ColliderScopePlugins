@@ -94,7 +94,8 @@ jobs:
           cd ui
           "$root/chamber/cschamber_uisnap_artefacts/Release/cschamber_uisnap" cs_chamber_shared.png
           "$root/chamber/cschamber_uisnap_artefacts/Release/cschamber_uisnap" cs_chamber_drone.png wallMode=Drone type=Electron
-          "$root/mux/csmux_uisnap_artefacts/Release/csmux_uisnap" cs_mux.png
+          "$root/mux/csmux_uisnap_artefacts/Release/csmux_uisnap" cs_mux_interleave.png
+          "$root/mux/csmux_uisnap_artefacts/Release/csmux_uisnap" cs_mux_cycle_lock.png mode=Cycle-lock
 
       - name: Package
         run: |

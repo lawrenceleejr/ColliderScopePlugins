@@ -105,7 +105,6 @@ private:
   XY lastOut_{};
   MuxTag lastSrc_ = MuxTag::A;
   int travelLeft_ = 0, zHold_ = 0;
-  double speedSmooth_ = 0.002;
 
   // Interleave
   bool onB_ = false;
