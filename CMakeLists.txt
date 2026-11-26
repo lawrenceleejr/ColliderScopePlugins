@@ -41,6 +41,7 @@ if(CS_BUILD_PLUGINS)
   add_subdirectory(plugins/mux)
   add_subdirectory(plugins/bubble)
   add_subdirectory(plugins/orbital)
+  add_subdirectory(plugins/script)
 endif()
 
 if(CS_BUILD_TESTS)

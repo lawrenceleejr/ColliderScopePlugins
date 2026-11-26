@@ -5,6 +5,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <atomic>
+#include <functional>
 #include <initializer_list>
 #include <utility>
 #include <vector>
@@ -24,7 +25,8 @@ struct ParamGroup {
 class Editor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
   Editor(juce::AudioProcessor& processor, juce::AudioProcessorValueTreeState& state, ScopeFeed& feed,
-         const char* decayParamId, const std::vector<ParamGroup>& groups, const std::vector<Preset>* presets = nullptr)
+         const char* decayParamId, const std::vector<ParamGroup>& groups, const std::vector<Preset>* presets = nullptr,
+         std::function<void(ParamPanel&)> extra = nullptr)
       : AudioProcessorEditor(processor), scope_(feed), panel_(state), decay_(state.getRawParameterValue(decayParamId)) {
     setLookAndFeel(&look_);
     addAndMakeVisible(scope_);
@@ -35,6 +37,8 @@ public:
         names.add(preset.name);
       panel_.addPresets(names, [&state, presets](int index) { applyPreset(state, (*presets)[static_cast<std::size_t>(index)]); });
     }
+    if (extra)
+      extra(panel_); // an instrument's own controls, above its parameters
     for (const ParamGroup& group : groups) {
       panel_.heading(group.title);
       for (const char* id : group.ids)

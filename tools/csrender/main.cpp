@@ -18,7 +18,8 @@ const char* kUsage =
     "csrender %s\n"
     "\n"
     "  csrender notes --out PREFIX [--notes NOTE:START:DUR[:VEL],...] [options]\n"
-    "      Play a note list through an instrument: --instrument chamber (default), bubble or orbital.\n"
+    "      Play a note list through an instrument: --instrument chamber (default), bubble, orbital or script.\n"
+    "      script:  --text 'E = mc^2' (LaTeX-like: ^ _ \\frac \\sqrt \\alpha ...)   --write MS   --slant S\n"
     "      bubble:  --type auto|electron|pair|decay|beam|random   --field F   --bubbles N   --growth R   --boil B   --form MS\n"
     "      orbital: --orbital auto|1s|2s|2pz|2px|3dz2|...|4fz3   --spin DEG/S   --tilt DEG   --lines N   --level L   --bloom MS\n"
     "      chamber:\n"
@@ -192,14 +193,28 @@ csio::Audio renderOrbital(const Args& args, double sampleRate) {
   return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
 }
 
+csio::Audio renderScript(const Args& args, double sampleRate) {
+  cs::ScriptParams p;
+  readVoice(args, p.voice);
+  p.setText(args.str("text", "E = mc^2"));
+  p.writeMs = args.num("write", p.writeMs);
+  p.slant = args.num("slant", p.slant);
+  cs::ScriptEngine voice;
+  voice.prepare(sampleRate);
+  voice.setParams(p);
+  return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
+}
+
 csio::Audio renderNotes(const Args& args, double sampleRate) {
   const std::string instrument = args.str("instrument", "chamber");
+  if (instrument == "script")
+    return renderScript(args, sampleRate);
   if (instrument == "bubble")
     return renderBubble(args, sampleRate);
   if (instrument == "orbital")
     return renderOrbital(args, sampleRate);
   if (instrument != "chamber")
-    fail("unknown instrument '" + instrument + "' (chamber, bubble, orbital)");
+    fail("unknown instrument '" + instrument + "' (chamber, bubble, orbital, script)");
   cs::ChamberParams p;
   p.type = choose<cs::TypeMode>(args, "type",
                                 {{"auto", cs::TypeMode::Auto},

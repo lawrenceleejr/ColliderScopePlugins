@@ -140,7 +140,8 @@ public:
 
   bool hasEditor() const override { return true; }
   juce::AudioProcessorEditor* createEditor() override {
-    return new Editor(*this, state_, scopeFeed_, "scopeDecay", groups(), &presets());
+    return new Editor(*this, state_, scopeFeed_, "scopeDecay", groups(), &presets(),
+                      [this](ParamPanel& panel) { addOwnControls(panel); });
   }
 
   const juce::String getName() const override { return JucePlugin_Name; }
@@ -170,14 +171,20 @@ public:
   }
   void setStateInformation(const void* data, int size) override {
     if (const auto xml = getXmlFromBinary(data, size))
-      if (xml->hasTagName(state_.state.getType()))
+      if (xml->hasTagName(state_.state.getType())) {
         state_.replaceState(juce::ValueTree::fromXml(*xml));
+        stateRestored();
+      }
   }
 
 protected:
   virtual Params readParams() const noexcept = 0;
   virtual std::vector<ParamGroup> groups() const = 0;
   virtual const std::vector<Preset>& presets() const = 0;
+  // Controls that are not parameters, placed above them. Default: none.
+  virtual void addOwnControls(ParamPanel&) {}
+  // Called on the message thread after state has been restored.
+  virtual void stateRestored() {}
 
   std::atomic<float>* raw(const char* paramId) { return state_.getRawParameterValue(paramId); }
 

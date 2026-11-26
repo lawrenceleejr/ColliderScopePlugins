@@ -17,6 +17,7 @@
 #include "cscore/pitch.h"
 #include "cscore/rng.h"
 #include "cscore/scope_view.h"
+#include "cscore/script.h"
 #include "cscore/tracks.h"
 #include "cscore/yin.h"
 

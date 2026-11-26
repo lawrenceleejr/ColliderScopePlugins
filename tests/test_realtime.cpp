@@ -198,6 +198,10 @@ TEST_CASE("Real-time safety: CS Orbital allocates nothing on the audio thread", 
   checkNoAudioAllocations<cs::OrbitalEngine>();
 }
 
+TEST_CASE("Real-time safety: CS Script allocates nothing on the audio thread", "[realtime][acceptance]") {
+  checkNoAudioAllocations<cs::ScriptEngine>();
+}
+
 template <typename Engine>
 double cpuPercent(const typename Engine::Params& p) {
   using Clock = std::chrono::steady_clock;
@@ -222,9 +226,15 @@ TEST_CASE("CPU: CS Bubble and CS Orbital under 5 % of one core", "[realtime][acc
   heavy.orbital = 20; // 4f, 16 wires: the most to draw
   heavy.lines = 16;
   const double orbital = cpuPercent<cs::OrbitalEngine>(heavy);
-  WARN("bubble: " << bubble << " % of a core; orbital: " << orbital << " % of a core, audio plus picture building");
+  cs::ScriptParams text;
+  text.setText("\\frac{\\partial\\psi}{\\partial t} = \\hat{H}\\psi \\\\ The quick brown fox jumps over the lazy dog");
+  text.writeMs = 300.0;
+  const double script = cpuPercent<cs::ScriptEngine>(text);
+  WARN("bubble: " << bubble << " % of a core; orbital: " << orbital << " %; script: " << script
+                  << " %, audio plus picture building");
   CHECK(bubble < 5.0);
   CHECK(orbital < 5.0);
+  CHECK(script < 5.0);
 }
 
 TEST_CASE("The hook does see allocations", "[realtime]") {

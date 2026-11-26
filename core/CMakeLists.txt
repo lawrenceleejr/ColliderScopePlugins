@@ -8,6 +8,7 @@ add_library(cscore STATIC
   src/orbital.cpp
   src/path.cpp
   src/scope_view.cpp
+  src/script.cpp
   src/tracks.cpp
   src/yin.cpp)
 target_include_directories(cscore PUBLIC include)

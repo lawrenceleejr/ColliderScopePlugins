@@ -40,7 +40,30 @@ public:
     rows_.push_back(std::move(row));
   }
 
-  void heading(const juce::String& title) { rows_.push_back({title.toUpperCase(), nullptr, nullptr, true}); }
+  // A line of text to type into, across the full width, under its own small heading.
+  void addText(const juce::String& title, const juce::String& initial, std::function<void(const juce::String&)> onChange) {
+    heading(title);
+    Row row;
+    row.height = kRowHeight + 6;
+    row.fullWidth = true;
+    auto editor = std::make_unique<juce::TextEditor>();
+    editor->setFont(look::font(14.0f));
+    editor->setText(initial, false);
+    editor->setIndents(2, 4);
+    auto* raw = editor.get();
+    editor->onTextChange = [raw, changed = std::move(onChange)] { changed(raw->getText()); };
+    row.control = std::move(editor);
+    addAndMakeVisible(*row.control);
+    rows_.push_back(std::move(row));
+  }
+
+  void heading(const juce::String& title) {
+    Row row;
+    row.title = title.toUpperCase();
+    row.isHeading = true;
+    row.height = kHeadingHeight;
+    rows_.push_back(std::move(row));
+  }
 
   void add(const juce::String& paramId) {
     auto* param = state_.getParameter(paramId);
@@ -80,20 +103,20 @@ public:
   int preferredHeight() const {
     int h = 0;
     for (const Row& r : rows_)
-      h += r.isHeading ? kHeadingHeight : kRowHeight;
+      h += r.height;
     return h;
   }
 
   void resized() override {
     int y = 0;
     for (Row& r : rows_) {
-      if (r.isHeading) {
-        y += kHeadingHeight;
-        continue;
+      if (r.fullWidth)
+        r.control->setBounds(0, y, getWidth(), r.height - 3);
+      else if (!r.isHeading) {
+        r.label->setBounds(0, y, kLabelWidth, r.height - 3);
+        r.control->setBounds(kLabelWidth, y, getWidth() - kLabelWidth, r.height - 3);
       }
-      r.label->setBounds(0, y, kLabelWidth, kRowHeight - 3);
-      r.control->setBounds(kLabelWidth, y, getWidth() - kLabelWidth, kRowHeight - 3);
-      y += kRowHeight;
+      y += r.height;
     }
   }
 
@@ -104,7 +127,12 @@ public:
     for (const Row& r : rows_) {
       if (r.isHeading)
         g.drawText(r.title, 0, y + 8, getWidth(), kHeadingHeight - 10, juce::Justification::bottomLeft);
-      y += r.isHeading ? kHeadingHeight : kRowHeight;
+      else if (r.fullWidth) { // a hairline under the text, as under every other control
+        g.setColour(look::faint);
+        g.fillRect(0.0f, static_cast<float>(y + r.height) - 4.5f, static_cast<float>(getWidth()), 1.0f);
+        g.setColour(look::dim);
+      }
+      y += r.height;
     }
   }
 
@@ -121,7 +149,8 @@ private:
     juce::String title;
     std::unique_ptr<juce::Label> label;
     std::unique_ptr<juce::Component> control;
-    bool isHeading = false;
+    bool isHeading = false, fullWidth = false;
+    int height = kRowHeight;
   };
   juce::AudioProcessorValueTreeState& state_;
   std::vector<Row> rows_;

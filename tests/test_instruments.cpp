@@ -528,3 +528,155 @@ TEST_CASE("Harmonic timing makes the sound more consonant than even timing", "[h
   // A track and a wall are too few strokes to rearrange: no gain, and no loss.
   CHECK(chamber[1] >= chamber[0] - 0.005);
 }
+
+// ------------------------------------------------------------------ CS Script
+
+namespace {
+
+struct Bounds {
+  double left = 1e9, right = -1e9, bottom = 1e9, top = -1e9;
+};
+Bounds boundsOf(const std::vector<cs::Stroke>& strokes, std::size_t from = 0, std::size_t to = SIZE_MAX) {
+  Bounds b;
+  for (std::size_t i = from; i < std::min(to, strokes.size()); ++i)
+    for (const cs::Vec2& p : strokes[i]) {
+      b.left = std::min(b.left, p.x);
+      b.right = std::max(b.right, p.x);
+      b.bottom = std::min(b.bottom, p.y);
+      b.top = std::max(b.top, p.y);
+    }
+  return b;
+}
+
+} // namespace
+
+TEST_CASE("Script: letters sit on the baseline at capital height 1", "[script]") {
+  const cs::ScriptLayout E = cs::layoutScript("E");
+  REQUIRE(E.strokes.size() == 4); // a stem and three arms
+  CHECK_THAT(E.bottom, WithinAbs(0.0, 1e-9));
+  CHECK_THAT(E.top, WithinAbs(1.0, 1e-9));
+  const cs::ScriptLayout g = cs::layoutScript("g");
+  CHECK(g.bottom < -0.2); // a descender
+  CHECK(g.top < 0.8);     // an x-height letter
+  CHECK(cs::layoutScript("").strokes.empty());
+  CHECK(cs::layoutScript("   ").strokes.empty());
+  // Text runs left to right and is centred on x = 0.
+  const cs::ScriptLayout word = cs::layoutScript("AV");
+  CHECK_THAT(word.left + word.right, WithinAbs(0.0, 1e-9));
+  CHECK(boundsOf(word.strokes, 0, 2).right <= boundsOf(word.strokes, 2).left + 1e-9);
+}
+
+TEST_CASE("Script: superscripts and subscripts are smaller, raised and lowered", "[script]") {
+  const cs::ScriptLayout plain = cs::layoutScript("x2"), raised = cs::layoutScript("x^2"), lowered = cs::layoutScript("x_2");
+  const std::size_t x = cs::layoutScript("x").strokes.size();
+  const Bounds two = boundsOf(plain.strokes, x), up = boundsOf(raised.strokes, x), down = boundsOf(lowered.strokes, x);
+  CHECK_THAT((up.top - up.bottom) / (two.top - two.bottom), WithinAbs(0.62, 0.01));
+  CHECK(up.bottom > 0.4);
+  CHECK(down.top < 0.45);
+  CHECK(down.bottom < -0.15);
+  // Both at once share the column; a braced script holds several letters.
+  const cs::ScriptLayout both = cs::layoutScript("x_i^2");
+  CHECK(both.right - both.left < plain.right - plain.left + 0.1);
+  CHECK(cs::layoutScript("e^{i\\pi}").strokes.size() > cs::layoutScript("e^i").strokes.size());
+}
+
+TEST_CASE("Script: fractions stack, roots cover", "[script]") {
+  const cs::ScriptLayout frac = cs::layoutScript("\\frac{a}{b}");
+  const std::size_t a = cs::layoutScript("a").strokes.size();
+  const Bounds top = boundsOf(frac.strokes, 0, a), bar = boundsOf(frac.strokes, a, a + 1), bottom = boundsOf(frac.strokes, a + 1);
+  CHECK(top.bottom > bar.top);
+  CHECK(bottom.top < bar.bottom);
+  CHECK_THAT(bar.top, WithinAbs(bar.bottom, 1e-9)); // a level bar
+  CHECK(bar.left <= std::min(top.left, bottom.left));
+  CHECK(bar.right >= std::max(top.right, bottom.right));
+
+  const cs::ScriptLayout root = cs::layoutScript("\\sqrt{x+y}");
+  const Bounds sign = boundsOf(root.strokes, 0, 1), inside = boundsOf(root.strokes, 1);
+  CHECK(sign.top > inside.top);
+  CHECK(sign.right >= inside.right);
+  CHECK(sign.left < inside.left);
+}
+
+TEST_CASE("Script: every Greek letter and symbol has a glyph; unknown commands are spelled out", "[script]") {
+  for (const char* name :
+       {"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda", "mu", "nu", "xi",
+        "pi", "rho", "sigma", "tau", "upsilon", "phi", "chi", "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Xi",
+        "Pi", "Sigma", "Phi", "Psi", "Omega", "pm", "times", "cdot", "leq", "geq", "neq", "equiv", "approx", "propto",
+        "infty", "partial", "nabla", "int", "sum", "prod", "to", "in", "subset", "cup", "cap", "exists", "perp", "hbar"}) {
+    const cs::ScriptLayout one = cs::layoutScript(std::string("\\") + name);
+    CAPTURE(name);
+    CHECK(!one.strokes.empty());
+    CHECK(one.right - one.left > 0.1);
+    CHECK(one.right - one.left < 1.6); // one glyph, not a word
+  }
+  CHECK(cs::layoutScript("\\alpha").strokes != cs::layoutScript("a").strokes);
+  // A typo shows up as its own name.
+  CHECK(cs::layoutScript("\\alpah").strokes.size() == cs::layoutScript("alpah").strokes.size());
+  // Lines stack downward.
+  const cs::ScriptLayout two = cs::layoutScript("A\\\\B");
+  CHECK(two.lines == 2);
+  CHECK(two.bottom < -1.0);
+  // Odd input does not crash.
+  for (const char* odd : {"^", "_", "{", "}", "\\", "\\frac", "\\frac{a}", "x^", "\\sqrt", "{{{", "a}}b", "$x$", "\\left(\\right)"})
+    (void)cs::layoutScript(odd);
+}
+
+TEST_CASE("Script: text is fitted to the screen", "[script]") {
+  for (const char* text : {"E = mc^2", "i", "\\frac{\\partial\\psi}{\\partial t} = \\hat{H}\\psi",
+                           "The quick brown fox jumps over the lazy dog", "a\\\\b\\\\c\\\\d"}) {
+    const std::vector<cs::Stroke> strokes = cs::fitScript(text);
+    double reach = 0.0;
+    for (const cs::Stroke& s : strokes)
+      for (const cs::Vec2& p : s)
+        reach = std::max(reach, std::hypot(p.x, p.y));
+    CAPTURE(text);
+    CHECK(reach <= 0.85 + 1e-9);
+    CHECK(reach > 0.2);
+  }
+}
+
+TEST_CASE("Script: pitch, picture and hard rest", "[script][acceptance]") {
+  cs::ScriptParams p;
+  p.setText("\\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}");
+  SECTION("pitch within 1 cent") { checkPitch<cs::ScriptEngine>(p, 80); }
+  SECTION("within r <= 0.95") {
+    p.voice.size = 1.0;
+    p.slant = 0.3;
+    cs::ScriptEngine voice;
+    const Render r = play(voice, p, 57, 80, 0.3, 0.0);
+    double peak = 0.0;
+    for (std::size_t i = 0; i < r.x.size(); ++i)
+      peak = std::max(peak, analysis::radius(r.x[i], r.y[i]));
+    CHECK(peak <= 0.95);
+    CHECK(peak > 0.5);
+  }
+  SECTION("hard rest") { checkHardRest<cs::ScriptEngine>(p); }
+  SECTION("no text is silence") {
+    p.setText("");
+    cs::ScriptEngine voice;
+    const Render r = play(voice, p, 57, 80, 0.1, 0.0);
+    for (float v : r.x)
+      REQUIRE(v == 0.0f);
+  }
+}
+
+TEST_CASE("Script: Write time writes the line out from left to right", "[script]") {
+  cs::ScriptParams p;
+  p.setText("ABCDEFGH");
+  p.writeMs = 400.0;
+  p.voice.size = 1.0;
+  cs::ScriptEngine voice;
+  const Render r = play(voice, p, 57, 80, 0.6, 0.0);
+  auto rightmost = [&](double at) {
+    float best = -1.0f;
+    const auto from = static_cast<std::size_t>(at * kSampleRate);
+    for (std::size_t i = from; i < from + 480; ++i)
+      best = std::max(best, r.x[i]);
+    return best;
+  };
+  CHECK(rightmost(0.05) < rightmost(0.2));
+  CHECK(rightmost(0.2) < rightmost(0.35));
+  CHECK_THAT(rightmost(0.45), WithinAbs(rightmost(0.55), 1e-3)); // finished
+  CHECK(rightmost(0.05) < -0.3);
+  CHECK(rightmost(0.55) > 0.7);
+}
