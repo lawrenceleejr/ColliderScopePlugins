@@ -29,6 +29,7 @@ const char* kUsage =
     "\n"
     "  Common: --sr RATE (48000)   --at SECONDS (PNG shows the scope at this time;\n"
     "          default: all light from the whole render)   --decay D (0.55)   --px N (512)\n"
+    "          --video FILE (also write the scope as raw rgb24 frames, PX x PX at 60 fps, for ffmpeg)\n"
     "  Writes PREFIX.wav and PREFIX.png. In XY mode left = X, right = Y.\n"
     "  The two-input serializer (CS Mux) joins in Phase 3.\n";
 
@@ -184,6 +185,28 @@ csio::Audio renderHit(const Args& args, double sampleRate) {
   return audio;
 }
 
+// The scope over time: one frame per 1/60 s, with persistence, as raw rgb24.
+void writeVideo(const Args& args, const csio::Audio& audio, const std::string& path) {
+  cs::ScopeView view(static_cast<int>(args.num("px", 512)));
+  view.setDecay(args.num("decay", 0.55));
+  std::FILE* f = std::fopen(path.c_str(), "wb");
+  if (!f)
+    fail("cannot write " + path);
+  const double frame = audio.sampleRate / 60.0;
+  const auto total = static_cast<int>(audio.x.size());
+  std::vector<std::uint8_t> rgb;
+  for (int k = 0;; ++k) {
+    const int a = static_cast<int>(k * frame), b = std::min(total, static_cast<int>((k + 1) * frame));
+    if (a >= b)
+      break;
+    view.beginFrame(1.0 / 60.0);
+    view.addSamples(audio.x.data() + a, audio.y.data() + a, b - a);
+    view.render(rgb);
+    std::fwrite(rgb.data(), 1, rgb.size(), f);
+  }
+  std::fclose(f);
+}
+
 void writePicture(const Args& args, const csio::Audio& audio, const std::string& path) {
   cs::ScopeView view(static_cast<int>(args.num("px", 512)));
   view.setDecay(args.num("decay", 0.55));
@@ -263,6 +286,8 @@ int main(int argc, char** argv) {
   if (writeAudio && !csio::writeWav(prefix + ".wav", audio))
     fail("cannot write " + prefix + ".wav");
   writePicture(args, audio, prefix + ".png");
+  if (args.has("video"))
+    writeVideo(args, audio, args.str("video", ""));
   std::printf("%s: %.3f s, peak %.3f\n", prefix.c_str(), static_cast<double>(audio.x.size()) / audio.sampleRate,
               static_cast<double>(peak));
   if (peak > static_cast<float>(cs::kPeak)) {
