@@ -66,10 +66,12 @@ TEST_CASE("Table segments share the period by fraction", "[path]") {
   const std::vector<cs::Segment> segments = {{left, 0.25}, {right, 0.75}};
   std::vector<cs::XY> table(2048);
   cs::buildTable(segments, table);
-  std::size_t onLeft = 0;
-  for (std::size_t i = 0; i < 512; ++i)
-    onLeft += table[i].x < 0.0f || i > 500; // the tail of the slot jumps toward the next segment
-  CHECK(onLeft == 512);
+  // The left stroke owns the first quarter: drawn for 1 unit, then a 2.06-unit
+  // jump toward the right stroke at weight 0.04, so 92 % of the slot is on x = -1.
+  for (std::size_t i = 0; i < 470; ++i)
+    REQUIRE(table[i].x == -1.0f);
+  CHECK(table[500].x > -1.0f);
+  CHECK(table[511].x < 1.0f);
   CHECK(table[512].x == 1.0f);
   CHECK(table[512].y == 0.0f);
 

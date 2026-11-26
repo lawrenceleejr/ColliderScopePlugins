@@ -51,7 +51,8 @@ TEST_CASE("Pitch: period of X within 1 cent of the note", "[chamber][acceptance]
   }
   CAPTURE(note, static_cast<int>(wall), steady);
   const Render r = play(p, note, 80, 0.6, 0.0);
-  const double period = analysis::periodByAutocorrelation(r.x, kSampleRate, static_cast<std::size_t>(0.1 * kSampleRate));
+  const double period = analysis::periodByAutocorrelation(r.x, kSampleRate, static_cast<std::size_t>(0.1 * kSampleRate),
+                                                           kSampleRate / cs::midiToHz(note));
   const double error = cs::cents(kSampleRate / period, cs::midiToHz(note));
   CAPTURE(period, error);
   CHECK(std::abs(error) < 1.0);
@@ -73,7 +74,8 @@ TEST_CASE("Pitch: Drone holds the root and snaps the note to an overtone", "[cha
   CHECK(voice.harmonic() == 6);
 
   const Render r = play(p, 57, 80, 0.6, 0.0);
-  const double period = analysis::periodByAutocorrelation(r.x, kSampleRate, static_cast<std::size_t>(0.1 * kSampleRate));
+  const double period = analysis::periodByAutocorrelation(r.x, kSampleRate, static_cast<std::size_t>(0.1 * kSampleRate),
+                                                           kSampleRate / 55.0);
   CHECK(std::abs(cs::cents(kSampleRate / period, 55.0)) < 1.0);
 }
 
