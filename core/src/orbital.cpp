@@ -196,7 +196,11 @@ void OrbitalSource::build(const Params& params, int, double age, std::span<XY> t
     }
   }
   if (params.voice.timing == Timing::Harmonic) {
-    grid_.build(strokes_, table); // the wires arrive in the same order every time; the solver arranges them
+    // The wires arrive in the same order every time; the solver arranges
+    // them. While the surface is still blooming its wires come and go, so
+    // the arrangement is only solved once it has settled.
+    grid_.setSolveOrder(params.bloomMs <= 0.0 || age >= params.bloomMs * 1e-3);
+    grid_.build(strokes_, table);
     return;
   }
   ordered_ = orderStrokes(std::move(strokes_), {});

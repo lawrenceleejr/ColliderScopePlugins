@@ -295,7 +295,9 @@ void HarmonicGrid::build(const std::vector<Stroke>& strokes, std::span<XY> table
     return random_;
   };
 
-  bool stale = order_.size() != count;
+  // Solve afresh when the strokes change in number, or when the order was
+  // only provisional (not solved) and solving has now been asked for.
+  bool stale = order_.size() != count || (solveOrder_ && !solved_);
   for (std::size_t i = 0; !stale && i < count; ++i)
     stale = order_[i] >= strokes.size() || strokes[order_[i]].empty();
   if (stale) {
@@ -334,6 +336,7 @@ void HarmonicGrid::build(const std::vector<Stroke>& strokes, std::span<XY> table
       const Stroke& s = strokes[live[pick]];
       p = reversed ? s.front() : s.back();
     }
+    solved_ = solveOrder_;
     int candidate = nextHarmonicGrid(static_cast<int>(count));
     score_ = -1e9;
     for (int tries = 0; tries < 4; ++tries) {

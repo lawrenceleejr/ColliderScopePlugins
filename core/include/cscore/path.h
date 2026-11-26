@@ -114,7 +114,7 @@ private:
   double arrange(const std::vector<Stroke>& strokes, const Arrangement& a, int slots, std::span<XY> table,
                  double penUpWeight, bool score);
   static constexpr int kTrials = 32;
-  bool solveOrder_ = true;
+  bool solveOrder_ = true, solved_ = false;
 
   std::vector<std::uint32_t> order_;
   std::vector<std::uint8_t> flip_;
