@@ -9,7 +9,6 @@ namespace cs {
 namespace {
 
 constexpr double kPi = std::numbers::pi;
-constexpr Vec2 kAlphaSource{-0.42, -0.30};
 
 Track makeAlpha(Rng& rng) {
   Track t;
@@ -17,14 +16,21 @@ Track makeAlpha(Rng& rng) {
   t.strands = 3;
   t.spread = 0.009;
   t.life = 2.0;
-  const double a = rng.uniform(0.0, 2.0 * kPi);
+  // Each alpha starts somewhere new in the chamber (uniform over a disc of
+  // radius 0.5) and heads off in a random direction; one that would run into
+  // the wall is sent the other way instead.
   const double length = rng.uniform(0.30, 0.45);
+  const double r0 = 0.5 * std::sqrt(rng.uniform()), a0 = rng.uniform(0.0, 2.0 * kPi);
+  const Vec2 origin{r0 * std::cos(a0), r0 * std::sin(a0)};
+  double a = rng.uniform(0.0, 2.0 * kPi);
+  if (std::hypot(origin.x + (length + 0.03) * std::cos(a), origin.y + (length + 0.03) * std::sin(a)) > 0.84)
+    a += kPi;
   const double c = std::cos(a), s = std::sin(a);
   constexpr int n = 16;
   t.points.resize(n);
   for (int i = 0; i < n; ++i) {
     const double d = 0.04 + (length - 0.04) * i / (n - 1);
-    t.points[static_cast<std::size_t>(i)] = {kAlphaSource.x + d * c, kAlphaSource.y + d * s};
+    t.points[static_cast<std::size_t>(i)] = {origin.x + d * c, origin.y + d * s};
   }
   for (int j = 0; j < 4; ++j) { // nuclear-recoil kink
     const double u = j / 3.0;

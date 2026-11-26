@@ -47,7 +47,7 @@ key that is still held. With more voices it plays chords: see Polyphony below.
 
 | Group | Parameter | What it does |
 | --- | --- | --- |
-| Track | Type | Auto picks by velocity: up to 50 an electron (a curl), 51 to 100 an alpha (a short thick track), above 100 a muon (a line across the chamber). Or fix the type, or Random. |
+| Track | Type | Auto picks by velocity: up to 50 an electron (a curl), 51 to 100 an alpha (a short thick track, starting anywhere in the chamber), above 100 a muon (a line across the chamber). Or fix the type, or Random. |
 | | Seed mode | Random: a new shape every note. Per key: the same key always draws the same track. Global: one track for everything. |
 | | Diffusion rate | How fast the track blurs. This is the hiss that grows while a note is held. |
 | | Drift | How fast the track sinks, as vapour does. |

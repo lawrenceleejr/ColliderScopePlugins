@@ -11,7 +11,8 @@ namespace {
 double dist(cs::Vec2 a, cs::Vec2 b) { return std::hypot(a.x - b.x, a.y - b.y); }
 } // namespace
 
-TEST_CASE("Alpha: straight, 0.30-0.45 long, from the source, 3 strands", "[tracks]") {
+TEST_CASE("Alpha: straight, 0.30-0.45 long, from anywhere in the chamber, 3 strands", "[tracks]") {
+  double minX = 1, maxX = -1, minY = 1, maxY = -1;
   for (std::uint64_t seed = 1; seed <= 50; ++seed) {
     cs::Rng rng(seed);
     const cs::Track t = cs::makeTrack(cs::TrackType::Alpha, rng);
@@ -19,8 +20,18 @@ TEST_CASE("Alpha: straight, 0.30-0.45 long, from the source, 3 strands", "[track
     CHECK(t.strands == 3);
     CHECK_THAT(t.spread, WithinAbs(0.009, 1e-12));
     CHECK_THAT(t.life, WithinAbs(2.0, 1e-12));
-    CHECK_THAT(dist(t.points.front(), {-0.42, -0.30}), WithinAbs(0.04, 1e-9));
-    const double reach = dist(t.points.back(), {-0.42, -0.30});
+    // The origin is 0.04 behind the first point, on the track's line.
+    const double ux0 = (t.points[1].x - t.points[0].x) / dist(t.points[0], t.points[1]);
+    const double uy0 = (t.points[1].y - t.points[0].y) / dist(t.points[0], t.points[1]);
+    const cs::Vec2 origin{t.points[0].x - 0.04 * ux0, t.points[0].y - 0.04 * uy0};
+    CHECK(std::hypot(origin.x, origin.y) <= 0.5 + 1e-9);
+    minX = std::min(minX, origin.x);
+    maxX = std::max(maxX, origin.x);
+    minY = std::min(minY, origin.y);
+    maxY = std::max(maxY, origin.y);
+    for (const cs::Vec2& p : t.points) // the whole track fits inside the wall
+      CHECK(std::hypot(p.x, p.y) <= 0.84 + 1e-9);
+    const double reach = dist(t.points.back(), origin);
     CHECK(reach >= 0.30 - 1e-9);
     CHECK(reach <= std::hypot(0.45, 0.03) + 1e-9);
     // Straight until the recoil kink on the last 4 points, bent up to 0.03.
@@ -35,6 +46,9 @@ TEST_CASE("Alpha: straight, 0.30-0.45 long, from the source, 3 strands", "[track
     }
     CHECK_THAT(std::abs((t.points[15].x - a.x) * uy - (t.points[15].y - a.y) * ux), WithinAbs(0.03, 1e-9));
   }
+  // Not all from one point: the origins spread over the chamber.
+  CHECK(maxX - minX > 0.5);
+  CHECK(maxY - minY > 0.5);
 }
 
 TEST_CASE("Muon: straight across the chamber, 2.6 long, 44 points", "[tracks]") {

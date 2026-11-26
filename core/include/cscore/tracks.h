@@ -25,7 +25,7 @@ struct Track {
   double life = 2.0;   // seconds
 };
 
-// Alpha: straight, length 0.30-0.45, from the source at (-0.42, -0.30),
+// Alpha: straight, length 0.30-0.45, from a random point within radius 0.5,
 // 16 points, recoil kink on the last 4; 3 strands. Life 2.0 s.
 // Muon: straight across the chamber, length 2.6, 44 points. Life 2.4 s.
 // Electron: random walk, 60 steps of 0.018, curling one way. Life 1.8 s.
