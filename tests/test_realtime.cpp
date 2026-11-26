@@ -77,10 +77,14 @@ TEST_CASE("Real-time safety: no allocation on the audio thread", "[realtime][acc
     p.releaseMs = phrase % 2 ? 30.0 : 0.0;
     p.glideMs = phrase % 4 ? 0.0 : 40.0;
     engine.setParams(p);
+    p.voices = phrase % 3 == 2 ? 4 : 1; // every third phrase is polyphonic
+    engine.setParams(p);
     engine.noteOn(45 + phrase * 3, 30 + phrase * 8);
     for (int block = 0; block < 60; ++block) { // 160 ms, paced like a live stream
       if (block == 20)
         engine.noteOn(52 + phrase, 100); // legato
+      if (block == 25)
+        engine.noteOn(57 + phrase, 60); // a third key: a chord when polyphonic
       if (block == 30)
         engine.setPitchBend(0.5);
       if (block == 40)

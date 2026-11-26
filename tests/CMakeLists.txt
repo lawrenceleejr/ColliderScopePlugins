@@ -4,6 +4,7 @@ add_executable(cscore_tests
   test_mux.cpp
   test_path.cpp
   test_pitch.cpp
+  test_poly.cpp
   test_tracks.cpp)
 target_link_libraries(cscore_tests PRIVATE cscore Catch2::Catch2WithMain)
 

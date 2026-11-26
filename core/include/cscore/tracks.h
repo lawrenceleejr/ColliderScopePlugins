@@ -66,8 +66,14 @@ int nearestHarmonic(double noteHz, double rootHz) noexcept;
 // Polyphony on one beam. The picture still repeats once per period, at a
 // shared fundamental f0 = base / k. Voice i is drawn m[i] times, each pass
 // lasting 1 / h[i] of the period, so it rings as overtone h[i] of f0: its
-// note snapped to the nearest one. What is left of the period goes to the
-// wall (when there is one) or to one more, slower pass of the lowest voice.
+// note snapped to the nearest one.
+//
+// A voice that sits on the fundamental itself (h = 1) is drawn once per
+// period, like the wall, and can take whatever share is left: that is how
+// Cycle-lock plays A. So a chord voiced on the overtones of its bass note
+// repeats at the bass note; any other chord gets a fundamental below it.
+// What is left of the period goes to the wall, to the voice on the
+// fundamental, or to one more, slower pass of the lowest voice.
 inline constexpr int kMaxVoices = 6;
 
 struct ChordPlan {
@@ -77,6 +83,8 @@ struct ChordPlan {
   std::array<int, kMaxVoices> h{}; // overtone of f0 per voice
   std::array<int, kMaxVoices> m{}; // passes per period per voice
   double wall = 0.0;   // share of the period for the wall
+  int elastic = -1;    // the voice on the fundamental, if any
+  double elasticShare = 0.0;
   double filler = 0.0; // share left over when there is no wall
   double maxErrorCents = 0.0; // worst snap, in cents
 };

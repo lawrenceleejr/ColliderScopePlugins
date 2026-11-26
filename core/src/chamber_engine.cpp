@@ -460,6 +460,15 @@ void ChamberEngine::buildChord(const BuilderInput& in) {
   }
   for (int i = 0; i < count; ++i) {
     const auto u = static_cast<std::size_t>(i);
+    if (i == plan.elastic) {
+      // The voice on the fundamental: once per period, in the share left for it.
+      Path path = agedVoice(i);
+      if (path.empty())
+        unused += plan.elasticShare;
+      else
+        segments_.push_back({std::move(path), plan.elasticShare});
+      continue;
+    }
     for (int pass = 0; pass < plan.m[u]; ++pass) { // fresh diffusion noise on every pass
       Path path = agedVoice(i);
       if (path.empty())

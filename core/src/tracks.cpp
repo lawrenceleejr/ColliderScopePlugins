@@ -178,13 +178,19 @@ ChordPlan planChord(std::span<const double> hz, double baseHz, double wallMin, d
   // fundamental flickers, so stay above 20 Hz if any k there works.
   constexpr int kMaxK = 24;
   constexpr double kGoodCents = 15.0;
-  auto evaluate = [&](int k, std::array<int, kMaxVoices>& h, double& error, double& once) {
+  constexpr double kElasticMin = 0.25, kElasticTarget = 0.34;
+  auto evaluate = [&](int k, std::array<int, kMaxVoices>& h, double& error, double& once, int& elastic) {
     const double f0 = baseHz / k;
     error = once = 0.0;
+    elastic = -1;
     for (int i = 0; i < count; ++i) {
-      h[static_cast<std::size_t>(i)] = std::max(1, static_cast<int>(std::lround(hz[static_cast<std::size_t>(i)] / f0)));
-      error = std::max(error, std::abs(1200.0 * std::log2(h[static_cast<std::size_t>(i)] * f0 / hz[static_cast<std::size_t>(i)])));
-      once += 1.0 / h[static_cast<std::size_t>(i)];
+      const auto u = static_cast<std::size_t>(i);
+      h[u] = std::max(1, static_cast<int>(std::lround(hz[u] / f0)));
+      error = std::max(error, std::abs(1200.0 * std::log2(h[u] * f0 / hz[u])));
+      if (h[u] == 1 && elastic < 0)
+        elastic = i; // drawn once per period, in whatever share is left
+      else
+        once += 1.0 / h[u];
     }
   };
   int chosen = 0;
@@ -195,8 +201,9 @@ ChordPlan planChord(std::span<const double> hz, double baseHz, double wallMin, d
         break;
       std::array<int, kMaxVoices> h{};
       double error = 0.0, once = 0.0;
-      evaluate(k, h, error, once);
-      if (once > 1.0 - wallMin + 1e-9)
+      int elastic = -1;
+      evaluate(k, h, error, once, elastic);
+      if (once > 1.0 - wallMin - (elastic >= 0 ? kElasticMin : 0.0) + 1e-9)
         continue; // no room
       if (error <= kGoodCents) {
         chosen = k;
@@ -212,23 +219,22 @@ ChordPlan planChord(std::span<const double> hz, double baseHz, double wallMin, d
   if (chosen == 0)
     chosen = kMaxK;
 
-  double once = 0.0;
-  evaluate(chosen, best.h, best.maxErrorCents, once);
+  double used = 0.0;
+  evaluate(chosen, best.h, best.maxErrorCents, used, best.elastic);
   best.k = chosen;
   best.f0 = baseHz / chosen;
 
-  // Passes: give every voice one, then keep adding to whichever has the
-  // smallest share of the period while the total still fits.
-  double used = 0.0;
-  for (int i = 0; i < count; ++i) {
+  // Passes: every voice has one; keep adding to whichever has the smallest
+  // share of the period while the total still fits.
+  for (int i = 0; i < count; ++i)
     best.m[static_cast<std::size_t>(i)] = 1;
-    used += 1.0 / best.h[static_cast<std::size_t>(i)];
-  }
-  const double limit = 1.0 - wallTarget + 1e-9;
+  const double limit = 1.0 - wallTarget - (best.elastic >= 0 ? kElasticTarget : 0.0) + 1e-9;
   for (;;) {
     int pick = -1;
     double smallest = 1e9;
     for (int i = 0; i < count; ++i) {
+      if (i == best.elastic)
+        continue;
       const auto u = static_cast<std::size_t>(i);
       const double share = static_cast<double>(best.m[u]) / best.h[u];
       if (share < smallest && used + 1.0 / best.h[u] <= limit) {
@@ -242,10 +248,14 @@ ChordPlan planChord(std::span<const double> hz, double baseHz, double wallMin, d
     used += 1.0 / best.h[static_cast<std::size_t>(pick)];
   }
   const double left = std::max(0.0, 1.0 - used);
-  if (wallMin > 0.0)
+  if (best.elastic >= 0) {
+    best.wall = wallMin > 0.0 ? std::min(wallTarget, 0.5 * left) : 0.0;
+    best.elasticShare = left - best.wall;
+  } else if (wallMin > 0.0) {
     best.wall = left;
-  else
+  } else {
     best.filler = left;
+  }
   return best;
 }
 
