@@ -48,7 +48,9 @@ public:
     row.fullWidth = true;
     auto editor = std::make_unique<juce::TextEditor>();
     editor->setFont(look::font(14.0f));
+    editor->setColour(juce::TextEditor::textColourId, look::text);
     editor->setText(initial, false);
+    editor->applyColourToAllText(look::text);
     editor->setIndents(2, 4);
     auto* raw = editor.get();
     editor->onTextChange = [raw, changed = std::move(onChange)] { changed(raw->getText()); };
