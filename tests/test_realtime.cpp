@@ -143,7 +143,7 @@ TEST_CASE("Real-time safety: CS Mux allocates nothing while processing", "[realt
 
 // The same check for the instruments built on MonoEngine.
 template <typename Engine>
-void checkNoAudioAllocations() {
+void checkNoAudioAllocations(typename Engine::Params p = {}) {
   Engine engine;
   engine.prepare(kSampleRate);
   engine.setSynchronous(false);
@@ -157,7 +157,6 @@ void checkNoAudioAllocations() {
   float peak = 0.0f;
   audioAllocations.store(0);
   onAudioThread = true;
-  typename Engine::Params p;
   for (int phrase = 0; phrase < 8; ++phrase) {
     p.voice.releaseMs = phrase % 2 ? 30.0 : 0.0;
     p.voice.glideMs = phrase % 4 ? 0.0 : 40.0;
@@ -199,7 +198,10 @@ TEST_CASE("Real-time safety: CS Orbital allocates nothing on the audio thread", 
 }
 
 TEST_CASE("Real-time safety: CS Script allocates nothing on the audio thread", "[realtime][acceptance]") {
-  checkNoAudioAllocations<cs::ScriptEngine>();
+  cs::ScriptParams p;
+  p.setText("E = mc^2");
+  p.writeMs = 50.0;
+  checkNoAudioAllocations<cs::ScriptEngine>(p);
 }
 
 template <typename Engine>

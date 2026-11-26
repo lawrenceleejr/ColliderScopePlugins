@@ -266,13 +266,13 @@ double HarmonicGrid::arrange(const std::vector<Stroke>& strokes, const Arrangeme
   }
   for (std::size_t i = 0; i < arranged_.size(); ++i)
     jumped += dist(arranged_[i].back(), arranged_[(i + 1) % arranged_.size()].front());
-  buildTableOnGrid(arranged_, table, slots, penUpWeight);
-  if (!score)
+  if (!score) {
+    buildTableOnGrid(arranged_, table, slots, penUpWeight);
     return 0.0;
-  // Score a quarter of the points: harmonics up to 32 need no more.
+  }
+  // To score, a quarter-size table is enough: harmonics up to 32 need no more.
   trial_.resize(table.size() / 4);
-  for (std::size_t i = 0; i < trial_.size(); ++i)
-    trial_[i] = table[4 * i];
+  buildTableOnGrid(arranged_, trial_, slots, penUpWeight);
   // Consonance, less a charge for jumps: a jump is drawn too, as a faint line.
   return consonance(trial_) - 0.3 * jumped / (drawn + jumped + 1e-9);
 }
