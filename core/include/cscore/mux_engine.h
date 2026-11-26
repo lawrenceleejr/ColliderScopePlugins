@@ -110,14 +110,14 @@ private:
   // Interleave
   bool onB_ = false;
   int sliceCount_ = 0;
-  double nearestSeen_ = 1e9, nearestLast_ = 1e9;
+  double lastGap_ = 0.0;
 
   // CycleLock
   PitchTracker trackA_, trackB_;
   std::vector<XY> ringA_, ringB_;
-  std::size_t writeIndex_ = 0;
-  bool lockActive_ = false;
-  double phase_ = 1.0, periodA_ = 0.0, periodB_ = 0.0, endA_ = 0.0, startB_ = 0.0, share_ = 0.5;
+  std::int64_t written_ = 0; // samples written to the rings: positions are absolute
+  bool lockActive_ = false, haveB_ = false;
+  double phase_ = 1.0, phaseStart_ = 0.0, periodA_ = 0.0, periodB_ = 0.0, endA_ = 0.0, startB_ = 0.0, share_ = 0.5;
   int repeats_ = 1, harmonic_ = 2, latency_ = 0;
 
   // Slot

@@ -36,13 +36,14 @@ void MuxEngine::reset() noexcept {
   trackB_.reset();
   std::fill(ringA_.begin(), ringA_.end(), XY{});
   std::fill(ringB_.begin(), ringB_.end(), XY{});
-  writeIndex_ = 0;
+  written_ = 0;
+  haveB_ = false;
   lastOut_ = {};
   lastSrc_ = MuxTag::A;
   travelLeft_ = zHold_ = 0;
   onB_ = false;
   sliceCount_ = 0;
-  nearestSeen_ = nearestLast_ = 1e9;
+  lastGap_ = 0.0;
   lockActive_ = false;
   phase_ = 1.0;
   latency_ = 0;
@@ -90,7 +91,7 @@ void MuxEngine::triggerB() noexcept {
 XY MuxEngine::readRing(const std::vector<XY>& ring, double position) const noexcept {
   const double floor = std::floor(position);
   const auto u = static_cast<float>(position - floor);
-  const auto i = static_cast<std::size_t>(static_cast<std::int64_t>(floor)) & (kRing - 1);
+  const auto i = static_cast<std::size_t>(static_cast<std::int64_t>(floor)) & (kRing - 1); // positions are absolute sample counts
   const XY p = ring[i], q = ring[(i + 1) & (kRing - 1)];
   return {p.x + (q.x - p.x) * u, p.y + (q.y - p.y) * u};
 }
@@ -109,22 +110,19 @@ void MuxEngine::interleave(XY a, XY b, XY& target, MuxTag& src) noexcept {
   bool flip = false;
   if (params_.switchPoint == SwitchPoint::Closest && slice >= 20) {
     // Move the switch, within +-10 % of the slice, to where the two traces
-    // are nearest, so the jump line is short. Causal: switch as soon as the
-    // gap is as small as the smallest seen in the previous window.
+    // are nearest, so the jump line is short. With no latency there is no
+    // looking ahead: switch at the first moment the gap stops shrinking.
     const int open = static_cast<int>(0.9 * slice), close = static_cast<int>(1.1 * slice);
-    if (sliceCount_ >= open) {
-      const double gap = dist(a, b);
-      nearestSeen_ = std::min(nearestSeen_, gap);
-      flip = gap <= nearestLast_ * 1.05 || sliceCount_ >= close;
-    }
+    const double gap = dist(a, b);
+    if (sliceCount_ >= open)
+      flip = gap > lastGap_ || sliceCount_ >= close;
+    lastGap_ = gap;
   } else {
     flip = sliceCount_ >= slice;
   }
   if (flip) {
     onB_ = !onB_;
     sliceCount_ = 0;
-    nearestLast_ = nearestSeen_;
-    nearestSeen_ = 1e9;
   }
   ++sliceCount_;
   target = onB_ ? b : a;
@@ -135,28 +133,46 @@ void MuxEngine::interleave(XY a, XY b, XY& target, MuxTag& src) noexcept {
 
 void MuxEngine::latchCycle() noexcept {
   periodA_ = trackA_.period();
-  periodB_ = trackB_.period();
-  // The latest whole cycle of each, ending at the sample just written.
-  const double newest = static_cast<double>(writeIndex_) + static_cast<double>(kRing) - 1.0;
-  endA_ = newest;
-  harmonic_ = nearestHarmonic(1.0 / periodB_, 1.0 / periodA_);
+  const double periodB = trackB_.period();
+  harmonic_ = nearestHarmonic(1.0 / periodB, 1.0 / periodA_);
   const HarmonicSplit split = harmonicSplit(harmonic_, 0.45 + params_.balance);
   share_ = split.p;
   repeats_ = split.m;
-  startB_ = newest - periodB_;
-  if (params_.switchPoint == SwitchPoint::Closest) {
-    // Start B's cycle at the point nearest to where A's cycle ends.
-    const XY end = readRing(ringA_, endA_);
-    double best = 1e9;
-    const int steps = static_cast<int>(periodB_);
-    for (int k = 0; k < steps; ++k) {
-      const double d = dist(readRing(ringB_, newest - periodB_ - k), end);
-      if (d < best) {
-        best = d;
-        startB_ = newest - periodB_ - k;
+
+  // The latest whole cycle of A ends at the sample just written. The phase
+  // accumulator wraps a fraction of a sample late; start reading that far
+  // in, so this output sample is A's input from exactly one period ago.
+  const double newest = static_cast<double>(written_ - 1);
+  phaseStart_ = phase_;
+  endA_ = newest;
+
+  // B's cycle must start at the same point of its waveform every period,
+  // or its picture would rotate through the slot and its pitch would not
+  // snap. Keep the phase reference and step it on by whole periods of B.
+  const double latest = newest - periodB;
+  const bool samePitch = haveB_ && std::abs(periodB - periodB_) < 0.02 * periodB_;
+  if (samePitch) {
+    startB_ += std::round((latest - startB_) / periodB) * periodB;
+    if (startB_ > latest)
+      startB_ -= periodB;
+  } else {
+    startB_ = latest;
+    if (params_.switchPoint == SwitchPoint::Closest) {
+      // Start B's cycle at the point nearest to where A's cycle ends.
+      const XY end = readRing(ringA_, endA_);
+      double best = 1e9;
+      const int steps = static_cast<int>(periodB);
+      for (int k = 0; k < steps; ++k) {
+        const double d = dist(readRing(ringB_, latest - k), end);
+        if (d < best) {
+          best = d;
+          startB_ = latest - k;
+        }
       }
     }
   }
+  periodB_ = periodB;
+  haveB_ = true;
   latency_ = static_cast<int>(std::lround(periodA_));
 }
 
@@ -166,6 +182,7 @@ bool MuxEngine::cycleLock(XY& target, MuxTag& src) noexcept {
     if (!pitched)
       return false;
     lockActive_ = true;
+    haveB_ = false;
     phase_ = 1.0;
   }
   if (phase_ >= 1.0) {
@@ -179,7 +196,7 @@ bool MuxEngine::cycleLock(XY& target, MuxTag& src) noexcept {
   }
   if (phase_ < share_) {
     // A's cycle, played in fraction p of the period.
-    target = readRing(ringA_, endA_ - periodA_ + (phase_ / share_) * periodA_);
+    target = readRing(ringA_, endA_ - periodA_ + ((phase_ - phaseStart_) / share_) * periodA_);
     src = MuxTag::A;
   } else {
     // B's cycle m times in the rest.
@@ -254,9 +271,10 @@ void MuxEngine::process(const float* ax, const float* ay, const float* bx, const
         trackB_.push(0.5f * (rawBx + rawBy));
     }
     if (params_.mode == MuxMode::CycleLock) {
-      ringA_[writeIndex_] = a;
-      ringB_[writeIndex_] = b;
-      writeIndex_ = (writeIndex_ + 1) & (kRing - 1);
+      const auto w = static_cast<std::size_t>(written_) & (kRing - 1);
+      ringA_[w] = a;
+      ringB_[w] = b;
+      ++written_;
     }
 
     XY target = a;
