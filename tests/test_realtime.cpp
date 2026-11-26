@@ -226,7 +226,6 @@ TEST_CASE("Scope display cost per frame", "[realtime]") {
     view.renderARGB(argb);
   }
   const double ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count() / frames;
-  WARN("scope frame (accumulate + tone map, 512 x 512): " << ms << " ms = " << ms / (1000.0 / 60.0) * 100.0
-                                                         << " % of a core at 60 fps");
+  WARN("scope frame: " << ms << " ms, " << ms / (1000.0 / 60.0) * 100.0 << " % of a core");
   CHECK(ms < 16.0); // must at least keep up with 60 fps
 }
