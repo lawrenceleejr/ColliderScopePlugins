@@ -5,4 +5,9 @@
 
 MuxEditor::MuxEditor(MuxProcessor& p) : AudioProcessorEditor(p) { setSize(420, 420); }
 
-void MuxEditor::paint(juce::Graphics& g) { cs::look::paintPlaceholder(g, getLocalBounds(), "CS Mux"); }
+void MuxEditor::paint(juce::Graphics& g) {
+  g.fillAll(cs::look::background);
+  g.setColour(cs::look::dim);
+  g.setFont(cs::look::font(15.0f));
+  g.drawText("CS Mux", getLocalBounds().reduced(16), juce::Justification::topLeft);
+}

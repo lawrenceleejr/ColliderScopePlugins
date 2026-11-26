@@ -1,4 +1,12 @@
 # Settings shared by both plugins.
+if(APPLE)
+  set(CS_PLUGIN_FORMATS VST3 AU Standalone)
+else()
+  set(CS_PLUGIN_FORMATS VST3 Standalone) # for compile checks off macOS
+endif()
+
+find_package(Threads REQUIRED)
+
 function(cs_configure_plugin target)
   target_include_directories(${target} PRIVATE ${PROJECT_SOURCE_DIR}/plugins/common)
   target_compile_definitions(${target} PUBLIC
@@ -11,6 +19,7 @@ function(cs_configure_plugin target)
     PRIVATE
       cscore
       juce::juce_audio_utils
+      Threads::Threads
     PUBLIC
       juce::juce_recommended_config_flags
       juce::juce_recommended_lto_flags
