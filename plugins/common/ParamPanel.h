@@ -37,6 +37,8 @@ public:
       row.control = std::move(box);
     } else {
       auto slider = std::make_unique<juce::Slider>(juce::Slider::LinearBar, juce::Slider::TextBoxRight);
+      slider->setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+      slider->setColour(juce::Slider::textBoxTextColourId, look::text);
       slider->setSliderSnapsToMousePosition(false);
       slider->setMouseDragSensitivity(220);
       sliderAttachments_.push_back(
@@ -45,7 +47,12 @@ public:
     }
     addAndMakeVisible(*row.control);
     rows_.push_back(std::move(row));
+    alignValues();
   }
+
+  // Numbers sit flush right, like the menu values above and below them.
+  void lookAndFeelChanged() override { alignValues(); }
+  void parentHierarchyChanged() override { alignValues(); }
 
   int preferredHeight() const {
     int h = 0;
@@ -79,6 +86,14 @@ public:
   }
 
 private:
+  void alignValues() {
+    for (Row& r : rows_)
+      if (auto* slider = dynamic_cast<juce::Slider*>(r.control.get()))
+        for (auto* child : slider->getChildren())
+          if (auto* label = dynamic_cast<juce::Label*>(child))
+            label->setJustificationType(juce::Justification::centredRight);
+  }
+
   struct Row {
     juce::String title;
     std::unique_ptr<juce::Label> label;

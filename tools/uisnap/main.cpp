@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     const int block = 128;
     plugin->setPlayConfigDetails(plugin->getTotalNumInputChannels(), 2, sampleRate, block);
     plugin->prepareToPlay(sampleRate, block);
-    std::unique_ptr<juce::AudioProcessorEditor> editor(plugin->createEditor());
+    std::unique_ptr<juce::AudioProcessorEditor> editor(plugin->createEditorIfNeeded());
     editor->setVisible(true);
 
     // Half a second of a held note (A3, velocity 80), paced so the scope's

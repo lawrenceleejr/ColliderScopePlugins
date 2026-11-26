@@ -55,6 +55,12 @@ public:
     auto* label = juce::LookAndFeel_V4::createSliderTextBox(slider);
     label->setJustificationType(juce::Justification::centredRight);
     label->setFont(font());
+    label->setColour(juce::Label::textColourId, text);
+    label->setColour(juce::Label::textWhenEditingColourId, phosphor);
+    label->setColour(juce::Label::outlineColourId, juce::Colours::transparentBlack);
+    label->setColour(juce::Label::outlineWhenEditingColourId, juce::Colours::transparentBlack);
+    label->setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+    label->setColour(juce::Label::backgroundWhenEditingColourId, background);
     return label;
   }
 

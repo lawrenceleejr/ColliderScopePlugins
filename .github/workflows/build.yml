@@ -52,6 +52,14 @@ jobs:
       - name: Core unit tests and command-line renders
         run: ctest --test-dir build --output-on-failure
 
+      - name: UI snapshots
+        run: |
+          mkdir -p ui
+          snap() { find build/plugins -type f -name "$1" -perm +111 | head -1; }
+          (cd ui && "../$(snap cschamber_uisnap)" cs_chamber_shared.png)
+          (cd ui && "../$(snap cschamber_uisnap)" cs_chamber_drone.png wallMode=Drone type=Electron)
+          (cd ui && "../$(snap csmux_uisnap)" cs_mux.png)
+
       - name: Collect plugins
         run: |
           mkdir -p dist
@@ -104,6 +112,13 @@ jobs:
         with:
           name: test-renders-macOS-arm64
           path: build/renders
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-snapshots
+          path: ui
           if-no-files-found: warn
 
       - uses: actions/upload-artifact@v4

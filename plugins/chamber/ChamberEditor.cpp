@@ -10,6 +10,7 @@ ChamberEditor::ChamberEditor(ChamberProcessor& p)
     : AudioProcessorEditor(p), processor_(p), scope_(p.scopeFeed()), panel_(p.state()) {
   setLookAndFeel(&look_);
   addAndMakeVisible(scope_);
+  addAndMakeVisible(panel_); // parented first, so its controls are born with this look
 
   panel_.heading("Track");
   for (const char* id : {"type", "seedMode", "diffusion", "drift", "condense"})
@@ -23,7 +24,6 @@ ChamberEditor::ChamberEditor(ChamberProcessor& p)
   panel_.heading("Output");
   for (const char* id : {"gain", "scopeDecay"})
     panel_.add(id);
-  addAndMakeVisible(panel_);
 
   setSize(kMargin + cs::ScopeDisplay::kSize + kMargin + kPanelWidth + kMargin, kMargin + cs::ScopeDisplay::kSize + kMargin);
   startTimerHz(10);
