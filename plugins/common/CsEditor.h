@@ -11,6 +11,7 @@
 
 #include "CsLook.h"
 #include "ParamPanel.h"
+#include "Presets.h"
 #include "ScopeDisplay.h"
 
 namespace cs {
@@ -23,11 +24,17 @@ struct ParamGroup {
 class Editor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
   Editor(juce::AudioProcessor& processor, juce::AudioProcessorValueTreeState& state, ScopeFeed& feed,
-         const char* decayParamId, const std::vector<ParamGroup>& groups)
+         const char* decayParamId, const std::vector<ParamGroup>& groups, const std::vector<Preset>* presets = nullptr)
       : AudioProcessorEditor(processor), scope_(feed), panel_(state), decay_(state.getRawParameterValue(decayParamId)) {
     setLookAndFeel(&look_);
     addAndMakeVisible(scope_);
     addAndMakeVisible(panel_); // parented first, so its controls are born with this look
+    if (presets != nullptr && !presets->empty()) {
+      juce::StringArray names;
+      for (const Preset& preset : *presets)
+        names.add(preset.name);
+      panel_.addPresets(names, [&state, presets](int index) { applyPreset(state, (*presets)[static_cast<std::size_t>(index)]); });
+    }
     for (const ParamGroup& group : groups) {
       panel_.heading(group.title);
       for (const char* id : group.ids)

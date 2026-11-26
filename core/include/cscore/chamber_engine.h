@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "cscore/decimator.h"
 #include "cscore/envelope.h"
 #include "cscore/lockfree.h"
 #include "cscore/oscillator.h"
@@ -31,6 +32,8 @@ namespace cs {
 enum class TypeMode { Auto, Alpha, Muon, Electron, Random };
 enum class SeedMode { Random, PerKey, Global };
 enum class WallMode { Off, Shared, Drone };
+// Scope-exact: the table read as is. Clean: 4x oversampled with a gentle low-pass.
+enum class Quality { ScopeExact, Clean };
 
 struct ChamberParams {
   TypeMode type = TypeMode::Auto;
@@ -47,6 +50,7 @@ struct ChamberParams {
   double glideMs = 0.0;        // 0-500 ms, legato only
   double bendRange = 2.0;      // 0-12 semitones
   double gainDb = 0.0;         // -24 to 0 dB
+  Quality quality = Quality::ScopeExact;
   std::uint64_t seed = 1;      // base seed for all three seed modes
 };
 
@@ -70,6 +74,8 @@ public:
   // Writes n samples of X (left) and Y (right). Silence is exact zero.
   void process(float* x, float* y, int n) noexcept;
   bool active() const noexcept { return active_; }
+  // Delay through the engine in samples: 4 in Clean quality, else 0.
+  int latencySamples() const noexcept { return params_.quality == Quality::Clean ? Decimator4::kLatency : 0; }
 
   // Builder thread: do any pending work. Returns true if a table was built.
   bool service();
@@ -103,6 +109,7 @@ private:
   void updateStep() noexcept;
   void publishInput() noexcept;
   void serviceInline() noexcept;
+  void newPeriod(bool sync) noexcept;
   // builder side
   bool serviceLocked();
   void build(const BuilderInput& in, double age);
@@ -112,6 +119,7 @@ private:
   double sampleRate_ = 48000.0;
   TableOscillator osc_;
   GateEnvelope env_;
+  Decimator4 cleanX_, cleanY_;
   std::array<Held, 16> held_{};
   int heldCount_ = 0;
   int note_ = 69, velocity_ = 80; // the note sounding or about to

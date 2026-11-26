@@ -247,6 +247,72 @@ TEST_CASE("Pitch bend spans the bend range", "[chamber]") {
   CHECK_THAT(voice.periodHz(), WithinAbs(55.0, 1e-9));
 }
 
+TEST_CASE("Clean quality: the decimator passes the audio band and rejects what would alias", "[clean]") {
+  auto gainAt = [](double hz) { // of a sine at 4 x 48 kHz, after decimation
+    cs::Decimator4 dec;
+    double peak = 0.0;
+    for (int n = 0; n < 4000; ++n) {
+      float in[4];
+      for (int k = 0; k < 4; ++k)
+        in[k] = static_cast<float>(std::sin(6.283185307179586 * hz * (4 * n + k) / 192000.0));
+      const float out = dec.push(in);
+      if (n > 100)
+        peak = std::max(peak, static_cast<double>(std::abs(out)));
+    }
+    return 20.0 * std::log10(peak + 1e-12);
+  };
+  CHECK_THAT(gainAt(100.0), WithinAbs(0.0, 0.05));
+  CHECK_THAT(gainAt(5000.0), WithinAbs(0.0, 0.3));
+  CHECK(gainAt(12000.0) > -2.0);
+  CHECK(gainAt(40000.0) < -30.0); // would alias to 8 kHz
+  CHECK(gainAt(60000.0) < -40.0); // would alias to 12 kHz
+  CHECK(gainAt(90000.0) < -40.0);
+
+  // Linear phase: an impulse comes out 4 samples later.
+  cs::Decimator4 dec;
+  int peakAt = -1;
+  float peakValue = 0.0f;
+  for (int n = 0; n < 16; ++n) {
+    const float in[4] = {n == 0 ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
+    const float out = dec.push(in);
+    if (std::abs(out) > peakValue) {
+      peakValue = std::abs(out);
+      peakAt = n;
+    }
+  }
+  CHECK(peakAt == cs::Decimator4::kLatency);
+}
+
+TEST_CASE("Clean quality: same pitch, same picture, still a hard rest", "[clean][chamber]") {
+  cs::ChamberParams p;
+  p.quality = cs::Quality::Clean;
+  p.diffusionRate = 0.0;
+  p.drift = 0.0;
+  p.type = cs::TypeMode::Muon; // a chord and a circle: sharp corners where they meet
+  for (int note : {45, 69, 81}) {
+    const Render r = play(p, note, 110, 0.6, 0.0);
+    const double period = analysis::periodByAutocorrelation(r.x, kSampleRate, static_cast<std::size_t>(0.1 * kSampleRate),
+                                                           kSampleRate / cs::midiToHz(note));
+    CHECK(std::abs(cs::cents(kSampleRate / period, cs::midiToHz(note))) < 1.0);
+    for (std::size_t i = 0; i < r.x.size(); ++i)
+      REQUIRE(analysis::radius(r.x[i], r.y[i]) <= 0.95);
+  }
+
+  cs::ChamberEngine voice;
+  voice.prepare(kSampleRate);
+  voice.setParams(p);
+  std::vector<float> x(9600), y(9600);
+  voice.noteOn(57, 80);
+  voice.process(x.data(), y.data(), 4800);
+  voice.noteOff(57);
+  voice.process(x.data() + 4800, y.data() + 4800, 4800);
+  for (std::size_t i = 4800 + 24; i < x.size(); ++i) {
+    REQUIRE(std::abs(x[i]) < 1e-4f);
+    REQUIRE(std::abs(y[i]) < 1e-4f);
+  }
+  CHECK(voice.latencySamples() == 4);
+}
+
 TEST_CASE("Gate envelope: attack and release times", "[envelope]") {
   cs::GateEnvelope env;
   env.setSampleRate(48000.0);

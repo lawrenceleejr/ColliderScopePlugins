@@ -4,6 +4,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -16,6 +17,28 @@ public:
   static constexpr int kRowHeight = 23, kHeadingHeight = 26, kLabelWidth = 108;
 
   explicit ParamPanel(juce::AudioProcessorValueTreeState& state) : state_(state) {}
+
+  // A menu at the top that applies a preset; it holds no state of its own.
+  void addPresets(const juce::StringArray& names, std::function<void(int)> onChoose) {
+    Row row;
+    row.title = "Preset";
+    row.label = std::make_unique<juce::Label>(juce::String(), row.title);
+    row.label->setColour(juce::Label::textColourId, look::dim);
+    row.label->setFont(look::font());
+    addAndMakeVisible(*row.label);
+    auto box = std::make_unique<juce::ComboBox>();
+    box->addItemList(names, 1);
+    box->setTextWhenNothingSelected("choose");
+    box->setJustificationType(juce::Justification::centredRight);
+    auto* raw = box.get();
+    box->onChange = [raw, choose = std::move(onChoose)] {
+      if (raw->getSelectedItemIndex() >= 0)
+        choose(raw->getSelectedItemIndex());
+    };
+    row.control = std::move(box);
+    addAndMakeVisible(*row.control);
+    rows_.push_back(std::move(row));
+  }
 
   void heading(const juce::String& title) { rows_.push_back({title.toUpperCase(), nullptr, nullptr, true}); }
 

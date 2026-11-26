@@ -4,6 +4,7 @@
 #pragma once
 
 #include "cscore/chamber_engine.h"
+#include "cscore/decimator.h"
 #include "cscore/envelope.h"
 #include "cscore/hits.h"
 #include "cscore/lockfree.h"

@@ -141,8 +141,11 @@ void ChamberEngine::applyPending() noexcept {
     glideLeft_ = 0;
     pitch_ = pitchTarget_;
   }
-  if (!active_)
+  if (!active_) {
     osc_.reset(); // a note from silence starts its picture at the start
+    cleanX_.reset();
+    cleanY_.reset();
+  }
   active_ = true;
   env_.gate(true);
   startClock_.store(clock_);
@@ -167,8 +170,21 @@ void ChamberEngine::serviceInline() noexcept {
   servicing_.clear();
 }
 
+void ChamberEngine::newPeriod(bool sync) noexcept {
+  // Control rate: each period or 2 ms, whichever is longer.
+  if (!awaitingBuild_ && sinceAdopt_ >= minRebuild_) {
+    awaitingBuild_ = true;
+    clockShared_.store(clock_, std::memory_order_relaxed);
+    buildRequest_.fetch_add(1);
+    if (sync)
+      serviceInline();
+  }
+  takeFrame(); // pictures change only between periods
+}
+
 void ChamberEngine::process(float* x, float* y, int n) noexcept {
   const bool sync = synchronous_.load(std::memory_order_relaxed);
+  const bool clean = params_.quality == Quality::Clean;
   for (int i = 0; i < n; ++i) {
     if (pending_ && frames_.hasFresh())
       takeFrame();
@@ -178,10 +194,28 @@ void ChamberEngine::process(float* x, float* y, int n) noexcept {
       continue;
     }
     const float g = env_.next() * gain_;
-    const XY p = osc_.read(frames_.front().table);
+    ++clock_;
+    ++sinceAdopt_;
+    XY p;
+    if (clean) {
+      // Read the picture at 4x the rate, low-pass, keep every fourth sample.
+      float sx[Decimator4::kFactor], sy[Decimator4::kFactor];
+      const double quarter = step_ * 0.25;
+      for (int k = 0; k < Decimator4::kFactor; ++k) {
+        const XY q = osc_.read(frames_.front().table);
+        sx[k] = q.x;
+        sy[k] = q.y;
+        if (osc_.advance(quarter))
+          newPeriod(sync);
+      }
+      p = {cleanX_.push(sx), cleanY_.push(sy)};
+    } else {
+      p = osc_.read(frames_.front().table);
+      if (osc_.advance(step_))
+        newPeriod(sync);
+    }
     x[i] = p.x * g;
     y[i] = p.y * g;
-    ++clock_;
     if (env_.idle()) {
       active_ = false;
       x[i] = y[i] = 0.0f;
@@ -190,18 +224,6 @@ void ChamberEngine::process(float* x, float* y, int n) noexcept {
     if (glideLeft_ > 0) {
       pitch_ = --glideLeft_ == 0 ? pitchTarget_ : pitch_ + glideStep_;
       updateStep();
-    }
-    ++sinceAdopt_;
-    if (osc_.advance(step_)) {
-      // A new period. Control rate: each period or 2 ms, whichever is longer.
-      if (!awaitingBuild_ && sinceAdopt_ >= minRebuild_) {
-        awaitingBuild_ = true;
-        clockShared_.store(clock_, std::memory_order_relaxed);
-        buildRequest_.fetch_add(1);
-        if (sync)
-          serviceInline();
-      }
-      takeFrame(); // pictures change only between periods
     }
   }
   clockShared_.store(clock_, std::memory_order_relaxed);

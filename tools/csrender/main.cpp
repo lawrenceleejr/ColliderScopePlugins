@@ -21,7 +21,7 @@ const char* kUsage =
     "      Play a note list through the CS Chamber voice.\n"
     "      --type auto|alpha|muon|electron|random   --seed-mode random|key|global   --seed N\n"
     "      --wall off|shared|drone   --root NOTE   --share P\n"
-    "      --diffusion R   --drift R   --condense MS   --size S   --attack MS   --release MS   --glide MS   --gain DB\n"
+    "      --diffusion R   --drift R   --condense MS   --size S   --attack MS   --release MS   --glide MS   --gain DB   --quality exact|clean\n"
     "  csrender hit kick|snare|crash --out PREFIX [--radius R] [--seed N]\n"
     "      Render one drum hit.\n"
     "  csrender mux A.wav B.wav --out PREFIX [--mode interleave|lock|slot] [options]\n"
@@ -105,6 +105,8 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
   p.wall = choose<cs::WallMode>(
       args, "wall", {{"off", cs::WallMode::Off}, {"shared", cs::WallMode::Shared}, {"drone", cs::WallMode::Drone}},
       p.wall);
+  p.quality = choose<cs::Quality>(args, "quality", {{"exact", cs::Quality::ScopeExact}, {"clean", cs::Quality::Clean}},
+                                  p.quality);
   p.seed = static_cast<std::uint64_t>(args.num("seed", 1));
   p.wallRoot = static_cast<int>(args.num("root", p.wallRoot));
   p.wallShare = args.num("share", p.wallShare);

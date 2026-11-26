@@ -62,6 +62,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ChamberProcessor::createLayo
   layout.add(number("release", "Release", release, 0.0f, "ms", 0));
   layout.add(number("glide", "Glide", Range(0.0f, 500.0f, 1.0f), 0.0f, "ms", 0));
   layout.add(number("bendRange", "Bend range", Range(0.0f, 12.0f, 1.0f), 2.0f, "st", 0));
+  layout.add(std::make_unique<Choice>(id("quality"), "Quality", juce::StringArray{"Scope-exact", "Clean"}, 0));
   layout.add(number("gain", "Output gain", Range(-24.0f, 0.0f, 0.1f), 0.0f, "dB", 1));
   layout.add(number("scopeDecay", "Persistence", Range(0.3f, 0.9f, 0.01f), 0.55f, "", 2));
   return layout;
@@ -85,12 +86,62 @@ ChamberProcessor::ChamberProcessor()
   release_ = raw("release");
   glide_ = raw("glide");
   bendRange_ = raw("bendRange");
+  quality_ = raw("quality");
   gain_ = raw("gain");
   scopeDecay_ = raw("scopeDecay");
   startThread();
+  startTimerHz(10);
 }
 
-ChamberProcessor::~ChamberProcessor() { stopThread(2000); }
+ChamberProcessor::~ChamberProcessor() {
+  stopTimer();
+  stopThread(2000);
+}
+
+// Type: 0 Auto, 1 Alpha, 2 Muon, 3 Electron, 4 Random. Wall mode: 0 Off, 1 Shared, 2 Drone.
+const std::vector<cs::Preset>& ChamberProcessor::presets() {
+  static const std::vector<cs::Preset> list = {
+      {"Default",
+       {{"type", 0}, {"seedMode", 0}, {"diffusion", 0.03f}, {"drift", 0.06f}, {"condense", 60}, {"wallMode", 1},
+        {"wallRoot", 33}, {"wallShare", 0.29f}, {"size", 0.9f}, {"attack", 0}, {"release", 0}, {"glide", 0},
+        {"bendRange", 2}, {"quality", 0}, {"gain", 0}}},
+      // A short bright track that speaks at once and slides between notes.
+      {"Alpha lead",
+       {{"type", 1}, {"seedMode", 0}, {"diffusion", 0.015f}, {"drift", 0.04f}, {"condense", 25}, {"wallMode", 0},
+        {"size", 0.9f}, {"attack", 0}, {"release", 60}, {"glide", 45}}},
+      // A long steady chord across the chamber, with the wall: full and plain.
+      {"Muon bass",
+       {{"type", 2}, {"seedMode", 1}, {"diffusion", 0.006f}, {"drift", 0.02f}, {"condense", 40}, {"wallMode", 1},
+        {"size", 0.9f}, {"attack", 0}, {"release", 0}, {"glide", 0}}},
+      // A curl that dissolves quickly: mostly noise by the end of the note.
+      {"Electron hiss",
+       {{"type", 3}, {"seedMode", 0}, {"diffusion", 0.06f}, {"drift", 0.1f}, {"condense", 120}, {"wallMode", 0},
+        {"size", 0.9f}, {"attack", 5}, {"release", 400}, {"glide", 0}}},
+      // The wall hums at A1; notes ring as its overtones.
+      {"Drone chamber",
+       {{"type", 0}, {"seedMode", 0}, {"diffusion", 0.03f}, {"drift", 0.06f}, {"condense", 60}, {"wallMode", 2},
+        {"wallRoot", 33}, {"wallShare", 0.29f}, {"size", 0.9f}, {"attack", 0}, {"release", 150}, {"glide", 0}}},
+  };
+  return list;
+}
+
+void ChamberProcessor::setCurrentProgram(int index) {
+  if (index < 0 || index >= getNumPrograms())
+    return;
+  program_ = index;
+  cs::applyPreset(state_, presets()[static_cast<std::size_t>(index)]);
+}
+
+const juce::String ChamberProcessor::getProgramName(int index) {
+  return index >= 0 && index < getNumPrograms() ? juce::String(presets()[static_cast<std::size_t>(index)].name) : juce::String();
+}
+
+void ChamberProcessor::timerCallback() {
+  // Clean quality delays the output by 4 samples (its low-pass is linear phase).
+  const int latency = juce::roundToInt(quality_->load()) == 1 ? cs::Decimator4::kLatency : 0;
+  if (latency != getLatencySamples())
+    setLatencySamples(latency);
+}
 
 void ChamberProcessor::run() {
   while (!threadShouldExit()) {
@@ -128,6 +179,7 @@ cs::ChamberParams ChamberProcessor::readParams() const noexcept {
   p.releaseMs = release_->load();
   p.glideMs = glide_->load();
   p.bendRange = bendRange_->load();
+  p.quality = static_cast<cs::Quality>(juce::roundToInt(quality_->load()));
   p.gainDb = gain_->load();
   return p;
 }
@@ -174,7 +226,8 @@ juce::AudioProcessorEditor* ChamberProcessor::createEditor() {
                         {{"Track", {"type", "seedMode", "diffusion", "drift", "condense"}},
                          {"Wall", {"wallMode", "wallRoot", "wallShare"}},
                          {"Voice", {"size", "attack", "release", "glide", "bendRange"}},
-                         {"Output", {"gain", "scopeDecay"}}});
+                         {"Output", {"quality", "gain", "scopeDecay"}}},
+                        &presets());
 }
 
 void ChamberProcessor::getStateInformation(juce::MemoryBlock& destination) {
