@@ -85,7 +85,7 @@ void PitchTracker::analyse() noexcept {
   const int centre = found * kDecimate;
   const int lo = std::max(2, centre - kDecimate - 2), hi = std::min(maxTau_ - 1, centre + kDecimate + 2);
   const float* full = linear_.data() + (static_cast<int>(length) - kWindow - maxTau_ - 1);
-  float d[2 * kDecimate + 8];
+  float d[2 * kDecimate + 8] = {};
   const int count = hi - lo + 3; // lo - 1 .. hi + 1
   for (int i = 0; i < count; ++i)
     d[i] = difference(full, full + (lo - 1 + i), kWindow);

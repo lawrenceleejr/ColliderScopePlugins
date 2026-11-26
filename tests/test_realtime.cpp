@@ -104,6 +104,39 @@ TEST_CASE("Real-time safety: no allocation on the audio thread", "[realtime][acc
   CHECK(tail == 0.0f);  // and stopped
 }
 
+TEST_CASE("Real-time safety: CS Mux allocates nothing while processing", "[realtime][acceptance]") {
+  cs::MuxEngine engine;
+  engine.prepare(kSampleRate);
+  std::vector<float> ax(kBlock), ay(kBlock), bx(kBlock), by(kBlock), x(kBlock), y(kBlock), z(kBlock);
+  double phase = 0.0;
+
+  audioAllocations.store(0);
+  onAudioThread = true;
+  cs::MuxParams p;
+  for (int pass = 0; pass < 6; ++pass) {
+    p.mode = static_cast<cs::MuxMode>(pass % 3);
+    p.switchPoint = pass < 3 ? cs::SwitchPoint::Fixed : cs::SwitchPoint::Closest;
+    p.a.rotation = pass * 10.0;
+    engine.setParams(p);
+    for (int block = 0; block < 400; ++block) {
+      for (int i = 0; i < kBlock; ++i) {
+        phase += 6.283185307179586 * 110.0 / kSampleRate;
+        ax[static_cast<std::size_t>(i)] = static_cast<float>(0.8 * std::cos(phase));
+        ay[static_cast<std::size_t>(i)] = static_cast<float>(0.8 * std::sin(phase));
+        bx[static_cast<std::size_t>(i)] = static_cast<float>(0.3 * std::cos(4.0 * phase));
+        by[static_cast<std::size_t>(i)] = static_cast<float>(0.3 * std::sin(8.0 * phase));
+      }
+      if (block % 50 == 10)
+        engine.triggerHit(static_cast<cs::HitType>((block / 50) % 3));
+      if (block % 50 == 30)
+        engine.triggerB();
+      engine.process(ax.data(), ay.data(), bx.data(), by.data(), x.data(), y.data(), z.data(), nullptr, kBlock);
+    }
+  }
+  onAudioThread = false;
+  CHECK(audioAllocations.load() == 0);
+}
+
 TEST_CASE("The hook does see allocations", "[realtime]") {
   audioAllocations.store(0);
   onAudioThread = true;
@@ -138,6 +171,39 @@ TEST_CASE("CPU: under 5 % of one core at 48 kHz, 128-sample buffer", "[realtime]
     const double percent = std::chrono::duration<double>(Clock::now() - start).count() / seconds * 100.0;
     WARN("wall mode " << static_cast<int>(wall) << ": " << percent << " % of a core, audio plus table building");
     CHECK(peak > 0.1f);
+    CHECK(percent < 5.0);
+  }
+}
+
+TEST_CASE("CPU: CS Mux under 5 % of one core at 48 kHz, 128-sample buffer", "[realtime][acceptance]") {
+  using Clock = std::chrono::steady_clock;
+  const double seconds = 10.0;
+  const int blocks = static_cast<int>(seconds * kSampleRate / kBlock);
+  std::vector<float> ax(kBlock), ay(kBlock), bx(kBlock), by(kBlock), x(kBlock), y(kBlock);
+  for (cs::MuxMode mode : {cs::MuxMode::Interleave, cs::MuxMode::CycleLock, cs::MuxMode::Slot}) {
+    cs::MuxEngine engine;
+    engine.prepare(kSampleRate);
+    cs::MuxParams p;
+    p.mode = mode;
+    p.switchPoint = cs::SwitchPoint::Closest;
+    engine.setParams(p);
+    double phase = 0.0, spent = 0.0;
+    for (int b = 0; b < blocks; ++b) {
+      for (int i = 0; i < kBlock; ++i) {
+        phase += 6.283185307179586 * 55.0 / kSampleRate;
+        ax[static_cast<std::size_t>(i)] = static_cast<float>(0.8 * std::cos(phase));
+        ay[static_cast<std::size_t>(i)] = static_cast<float>(0.8 * std::sin(phase));
+        bx[static_cast<std::size_t>(i)] = static_cast<float>(0.3 * std::cos(4.0 * phase));
+        by[static_cast<std::size_t>(i)] = static_cast<float>(0.3 * std::sin(4.0 * phase));
+      }
+      if (b % 94 == 0)
+        engine.triggerHit(cs::HitType::Kick);
+      const auto start = Clock::now();
+      engine.process(ax.data(), ay.data(), bx.data(), by.data(), x.data(), y.data(), nullptr, nullptr, kBlock);
+      spent += std::chrono::duration<double>(Clock::now() - start).count();
+    }
+    const double percent = spent / seconds * 100.0;
+    WARN("mux mode " << static_cast<int>(mode) << ": " << percent << " % of a core");
     CHECK(percent < 5.0);
   }
 }
