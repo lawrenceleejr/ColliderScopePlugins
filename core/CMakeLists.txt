@@ -3,9 +3,11 @@ add_library(cscore STATIC
   src/chamber_engine.cpp
   src/cscore.cpp
   src/hits.cpp
+  src/mux_engine.cpp
   src/path.cpp
   src/scope_view.cpp
-  src/tracks.cpp)
+  src/tracks.cpp
+  src/yin.cpp)
 target_include_directories(cscore PUBLIC include)
 target_compile_features(cscore PUBLIC cxx_std_20)
 target_compile_definitions(cscore PRIVATE CSCORE_VERSION="${PROJECT_VERSION}")

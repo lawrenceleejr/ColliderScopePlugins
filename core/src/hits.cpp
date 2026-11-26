@@ -64,4 +64,83 @@ std::size_t slotLength(std::span<const XY> hit, double threshold) noexcept {
   return 0;
 }
 
+// ---------------------------------------------------------------- HitVoice
+
+namespace {
+constexpr std::size_t kNoiseSize = 1u << 14;
+struct NoiseTable {
+  std::vector<XY> unit;  // random points on the unit circle
+  std::vector<XY> gauss; // standard normal pairs
+  NoiseTable() : unit(kNoiseSize), gauss(kNoiseSize) {
+    Rng rng(0xC0111DE5ULL);
+    for (std::size_t i = 0; i < kNoiseSize; ++i) {
+      const double a = rng.uniform(0.0, 2.0 * std::numbers::pi);
+      unit[i] = {static_cast<float>(std::cos(a)), static_cast<float>(std::sin(a))};
+      gauss[i] = {static_cast<float>(rng.normal()), static_cast<float>(rng.normal())};
+    }
+  }
+};
+const NoiseTable& noiseTable() {
+  static const NoiseTable table;
+  return table;
+}
+} // namespace
+
+void HitVoice::warmUp() { (void)noiseTable(); }
+
+void HitVoice::start(HitType type, double sampleRate, double r0, double a0) noexcept {
+  type_ = type;
+  index_ = 0;
+  noise_ = (++serial_ * 2654435761u) & (kNoiseSize - 1); // a different stretch of noise each hit
+  const double keep = std::log(1.0 / 0.12);             // time constants until 12 % remains
+  if (type == HitType::Kick) {
+    const KickParams k;
+    r0_ = r0;
+    radius_ = r0;
+    radiusDecay_ = std::exp(-1.0 / (k.radiusTau * sampleRate));
+    phase_ = a0;
+    sweep_ = 2.0 * std::numbers::pi * (k.startHz - k.endHz) / sampleRate;
+    sweepDecay_ = std::exp(-1.0 / (k.pitchTau * sampleRate));
+    endStep_ = 2.0 * std::numbers::pi * k.endHz / sampleRate;
+    click_ = k.click * r0;
+    clickDecay_ = std::exp(-1.0 / (k.clickTau * sampleRate));
+    left_ = static_cast<int>(std::min(k.duration, k.radiusTau * keep) * sampleRate);
+  } else {
+    const double radius = type == HitType::Snare ? 0.42 : 0.80;
+    const double tau = type == HitType::Snare ? 0.035 : 0.090;
+    const double duration = type == HitType::Snare ? 0.13 : 0.30;
+    r0_ = radius;
+    radius_ = radius;
+    radiusDecay_ = std::exp(-1.0 / (tau * sampleRate));
+    grow_ = 1.0;
+    growDecay_ = std::exp(-1.0 / (0.004 * sampleRate));
+    // The ring peaks near t = 10 ms; it has fallen to 12 % of that peak by about tau * (keep + 0.3).
+    left_ = static_cast<int>(std::min(duration, tau * (keep + 0.3)) * sampleRate);
+  }
+}
+
+XY HitVoice::next() noexcept {
+  if (left_ <= 0)
+    return {};
+  --left_;
+  const NoiseTable& noise = noiseTable();
+  const std::size_t n = (noise_ + static_cast<std::uint32_t>(index_++)) & (kNoiseSize - 1);
+  XY out;
+  if (type_ == HitType::Kick) {
+    phase_ += endStep_ + sweep_;
+    out = {static_cast<float>(radius_ * std::cos(phase_) + click_ * noise.gauss[n].x),
+           static_cast<float>(radius_ * std::sin(phase_) + click_ * noise.gauss[n].y)};
+    sweep_ *= sweepDecay_;
+    radius_ *= radiusDecay_;
+    click_ *= clickDecay_;
+  } else {
+    const double r = radius_ * (1.0 - grow_);
+    out = {static_cast<float>(r * noise.unit[n].x), static_cast<float>(r * noise.unit[n].y)};
+    radius_ *= radiusDecay_;
+    grow_ *= growDecay_;
+  }
+  radialSoftLimit(std::span<XY>(&out, 1));
+  return out;
+}
+
 } // namespace cs
