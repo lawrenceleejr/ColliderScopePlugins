@@ -66,6 +66,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ChamberProcessor::createLayo
   layout.add(number("release", "Release", release, 0.0f, "ms", 0));
   layout.add(number("glide", "Glide", Range(0.0f, 500.0f, 1.0f), 0.0f, "ms", 0));
   layout.add(number("bendRange", "Bend range", Range(0.0f, 12.0f, 1.0f), 2.0f, "st", 0));
+  layout.add(std::make_unique<Choice>(id("timing"), "Timing", juce::StringArray{"Even", "Harmonic"}, 1));
   layout.add(std::make_unique<Choice>(id("quality"), "Quality", juce::StringArray{"Scope-exact", "Clean"}, 0));
   layout.add(number("gain", "Output gain", Range(-24.0f, 0.0f, 0.1f), 0.0f, "dB", 1));
   layout.add(number("scopeDecay", "Persistence", Range(0.3f, 0.9f, 0.01f), 0.55f, "", 2));
@@ -92,6 +93,7 @@ ChamberProcessor::ChamberProcessor()
   glide_ = raw("glide");
   bendRange_ = raw("bendRange");
   quality_ = raw("quality");
+  timing_ = raw("timing");
   gain_ = raw("gain");
   scopeDecay_ = raw("scopeDecay");
   startThread();
@@ -191,6 +193,7 @@ cs::ChamberParams ChamberProcessor::readParams() const noexcept {
   p.glideMs = glide_->load();
   p.bendRange = bendRange_->load();
   p.quality = static_cast<cs::Quality>(juce::roundToInt(quality_->load()));
+  p.timing = static_cast<cs::Timing>(juce::roundToInt(timing_->load()));
   p.gainDb = gain_->load();
   return p;
 }
@@ -237,7 +240,7 @@ juce::AudioProcessorEditor* ChamberProcessor::createEditor() {
                         {{"Track", {"type", "seedMode", "diffusion", "drift", "condense"}},
                          {"Wall", {"wallMode", "wallRoot", "wallShare"}},
                          {"Voice", {"voices", "size", "attack", "release", "glide", "bendRange"}},
-                         {"Output", {"quality", "gain", "scopeDecay"}}},
+                         {"Output", {"timing", "quality", "gain", "scopeDecay"}}},
                         &presets());
 }
 

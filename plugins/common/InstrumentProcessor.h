@@ -56,13 +56,14 @@ inline void addVoice(juce::AudioProcessorValueTreeState::ParameterLayout& layout
   layout.add(number("release", "Release", release, 0.0f, "ms", 0));
   layout.add(number("glide", "Glide", Range(0.0f, 500.0f, 1.0f), 0.0f, "ms", 0));
   layout.add(number("bendRange", "Bend range", Range(0.0f, 12.0f, 1.0f), 2.0f, "st", 0));
+  layout.add(choice("timing", "Timing", {"Even", "Harmonic"}, 1));
   layout.add(choice("quality", "Quality", {"Scope-exact", "Clean"}, 0));
   layout.add(number("gain", "Output gain", Range(-24.0f, 0.0f, 0.1f), 0.0f, "dB", 1));
   layout.add(number("scopeDecay", "Persistence", Range(0.3f, 0.9f, 0.01f), 0.55f, "", 2));
 }
 
 inline const std::vector<const char*> kVoiceGroup = {"size", "attack", "release", "glide", "bendRange"};
-inline const std::vector<const char*> kOutputGroup = {"quality", "gain", "scopeDecay"};
+inline const std::vector<const char*> kOutputGroup = {"timing", "quality", "gain", "scopeDecay"};
 
 } // namespace param
 
@@ -81,6 +82,7 @@ public:
     glide_ = raw("glide");
     bendRange_ = raw("bendRange");
     quality_ = raw("quality");
+    timing_ = raw("timing");
     gain_ = raw("gain");
     startThread();
     startTimerHz(10);
@@ -187,6 +189,7 @@ protected:
     v.glideMs = glide_->load();
     v.bendRange = bendRange_->load();
     v.quality = static_cast<Quality>(juce::roundToInt(quality_->load()));
+    v.timing = static_cast<Timing>(juce::roundToInt(timing_->load()));
     v.gainDb = gain_->load();
     return v;
   }
@@ -208,7 +211,7 @@ private:
   EngineT engine_;
   ScopeFeed scopeFeed_;
   int program_ = 0;
-  std::atomic<float>*size_, *attack_, *release_, *glide_, *bendRange_, *quality_, *gain_;
+  std::atomic<float>*size_, *attack_, *release_, *glide_, *bendRange_, *quality_, *timing_, *gain_;
 
   JUCE_DECLARE_NON_COPYABLE(InstrumentProcessor)
 };

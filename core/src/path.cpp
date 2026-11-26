@@ -253,7 +253,7 @@ void buildTableOnGrid(const std::vector<Stroke>& ordered, std::span<XY> table, i
 }
 
 double HarmonicGrid::arrange(const std::vector<Stroke>& strokes, const Arrangement& a, int slots, std::span<XY> table,
-                             double penUpWeight) {
+                             double penUpWeight, bool score) {
   arranged_.resize(a.order.size());
   double drawn = 0.0, jumped = 0.0;
   for (std::size_t i = 0; i < a.order.size(); ++i) {
@@ -267,6 +267,8 @@ double HarmonicGrid::arrange(const std::vector<Stroke>& strokes, const Arrangeme
   for (std::size_t i = 0; i < arranged_.size(); ++i)
     jumped += dist(arranged_[i].back(), arranged_[(i + 1) % arranged_.size()].front());
   buildTableOnGrid(arranged_, table, slots, penUpWeight);
+  if (!score)
+    return 0.0;
   // Score a quarter of the points: harmonics up to 32 need no more.
   trial_.resize(table.size() / 4);
   for (std::size_t i = 0; i < trial_.size(); ++i)
@@ -302,7 +304,11 @@ void HarmonicGrid::build(const std::vector<Stroke>& strokes, std::span<XY> table
     flip_.clear();
     std::vector<bool> left(count, true);
     Vec2 p = start;
-    for (std::size_t n = 0; n < count; ++n) {
+    for (std::size_t n = 0; n < count && !solveOrder_; ++n) { // as given
+      order_.push_back(live[n]);
+      flip_.push_back(false);
+    }
+    for (std::size_t n = 0; n < count && solveOrder_; ++n) {
       double best = 1e300;
       std::size_t pick = 0;
       bool reversed = false;
@@ -331,55 +337,53 @@ void HarmonicGrid::build(const std::vector<Stroke>& strokes, std::span<XY> table
     int candidate = nextHarmonicGrid(static_cast<int>(count));
     score_ = -1e9;
     for (int tries = 0; tries < 4; ++tries) {
-      const double score = arrange(strokes, {order_, flip_}, candidate, table, penUpWeight);
+      const double score = arrange(strokes, {order_, flip_}, candidate, table, penUpWeight, true);
       if (score > score_ + 1e-6) {
         score_ = score;
         slots_ = candidate;
       }
       candidate = nextHarmonicGrid(candidate + 1);
     }
-  } else {
-    // The picture has moved on since the score was taken: take it again.
-    score_ = arrange(strokes, {order_, flip_}, slots_, table, penUpWeight);
-  }
-
-  // A couple of trials: swap two strokes, reverse one, or change the grid.
-  for (int trial = 0; trial < 2 && count > 1; ++trial) {
-    Arrangement a{order_, flip_};
-    int slots = slots_;
-    const std::uint64_t r = next();
-    const std::size_t i = (r >> 8) % count, j = (r >> 24) % count;
-    switch (r % 4) {
-    case 0:
-      std::swap(a.order[i], a.order[j]);
-      std::swap(a.flip[i], a.flip[j]);
-      break;
-    case 1:
-      a.flip[i] = !a.flip[i];
-      break;
-    case 2: { // reverse a run of strokes, as a whole
-      const std::size_t lo = std::min(i, j), hi = std::max(i, j);
-      std::reverse(a.order.begin() + static_cast<std::ptrdiff_t>(lo), a.order.begin() + static_cast<std::ptrdiff_t>(hi) + 1);
-      std::reverse(a.flip.begin() + static_cast<std::ptrdiff_t>(lo), a.flip.begin() + static_cast<std::ptrdiff_t>(hi) + 1);
-      for (std::size_t k = lo; k <= hi; ++k)
-        a.flip[k] = !a.flip[k];
-      break;
-    }
-    default:
-      slots = (r >> 40) % 2 ? nextHarmonicGrid(slots_ + 1) : std::max(nextHarmonicGrid(static_cast<int>(count)), slots_ / 2);
-      if (slots == slots_)
-        continue;
-      break;
-    }
-    const double score = arrange(strokes, a, slots, table, penUpWeight);
-    if (score > score_ + 0.002) { // only for a real gain: no dithering between equals
-      score_ = score;
-      order_ = std::move(a.order);
-      flip_ = std::move(a.flip);
-      slots_ = slots;
+    // Then improve it: swap two strokes, reverse one, reverse a run, or change the grid.
+    for (int trial = 0; trial < (solveOrder_ ? kTrials : 0) && count > 1; ++trial) {
+      Arrangement a{order_, flip_};
+      int slots = slots_;
+      const std::uint64_t r = next();
+      const std::size_t i = (r >> 8) % count, j = (r >> 24) % count;
+      switch (r % 4) {
+      case 0:
+        std::swap(a.order[i], a.order[j]);
+        std::swap(a.flip[i], a.flip[j]);
+        break;
+      case 1:
+        a.flip[i] = !a.flip[i];
+        break;
+      case 2: { // reverse a run of strokes, as a whole
+        const std::size_t lo = std::min(i, j), hi = std::max(i, j);
+        std::reverse(a.order.begin() + static_cast<std::ptrdiff_t>(lo), a.order.begin() + static_cast<std::ptrdiff_t>(hi) + 1);
+        std::reverse(a.flip.begin() + static_cast<std::ptrdiff_t>(lo), a.flip.begin() + static_cast<std::ptrdiff_t>(hi) + 1);
+        for (std::size_t k = lo; k <= hi; ++k)
+          a.flip[k] = !a.flip[k];
+        break;
+      }
+      default:
+        slots = (r >> 40) % 2 ? nextHarmonicGrid(slots_ + 1) : std::max(nextHarmonicGrid(static_cast<int>(count)), slots_ / 2);
+        if (slots == slots_)
+          continue;
+        break;
+      }
+      const double score = arrange(strokes, a, slots, table, penUpWeight, true);
+      if (score > score_ + 0.002) { // only for a real gain
+        score_ = score;
+        order_ = std::move(a.order);
+        flip_ = std::move(a.flip);
+        slots_ = slots;
+      }
     }
   }
-  arrange(strokes, {order_, flip_}, slots_, table, penUpWeight);
+  // The arrangement then holds for as long as the picture has this many
+  // strokes, so the tone is steady.
+  arrange(strokes, {order_, flip_}, slots_, table, penUpWeight, false);
 }
 
 } // namespace cs

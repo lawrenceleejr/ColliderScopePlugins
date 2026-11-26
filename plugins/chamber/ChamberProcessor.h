@@ -58,7 +58,7 @@ private:
   int program_ = 0;
 
   std::atomic<float>*type_, *seedMode_, *diffusion_, *drift_, *condense_, *wallMode_, *wallRoot_, *wallShare_, *voices_, *size_,
-      *attack_, *release_, *glide_, *bendRange_, *quality_, *gain_, *scopeDecay_;
+      *attack_, *release_, *glide_, *bendRange_, *quality_, *timing_, *gain_, *scopeDecay_;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ChamberProcessor)
 };

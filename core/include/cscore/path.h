@@ -88,12 +88,12 @@ void buildTableOnGrid(const std::vector<Stroke>& ordered, std::span<XY> table, i
 // Solves for the drawing of a picture: which stroke follows which, in which
 // direction, on which grid. The order and direction of the strokes set the
 // beam's large movements, and so the low harmonics, so there is real room
-// to choose. It starts from the nearest-neighbour order and then, a couple
-// of trials per rebuild, tries swapping, reversing or moving strokes and
-// keeps a change when the spectrum becomes more consonant without the jumps
-// growing much. The arrangement persists while the number of strokes stays
-// the same (strokes must arrive in the same order every time), so the sound
-// settles over the first fraction of a second and then holds.
+// to choose. It starts from the nearest-neighbour order, then tries
+// swapping, reversing and moving strokes and keeps a change when the
+// spectrum becomes more consonant without the jumps growing much. It solves
+// once, when the picture first has a given number of strokes; after that
+// the arrangement holds, so the tone is steady. Strokes must arrive in the
+// same order every time.
 class HarmonicGrid {
 public:
   // Builds `table` from `strokes` (in a stable order of your choosing; the
@@ -103,6 +103,8 @@ public:
   int slots() const noexcept { return slots_; }
   double score() const noexcept { return score_; }
   void reset() noexcept { order_.clear(); }
+  // Off: keep the strokes in the order given (reversing none) and only choose the grid.
+  void setSolveOrder(bool on) noexcept { solveOrder_ = on; }
 
 private:
   struct Arrangement {
@@ -110,7 +112,9 @@ private:
     std::vector<std::uint8_t> flip;
   };
   double arrange(const std::vector<Stroke>& strokes, const Arrangement& a, int slots, std::span<XY> table,
-                 double penUpWeight);
+                 double penUpWeight, bool score);
+  static constexpr int kTrials = 32;
+  bool solveOrder_ = true;
 
   std::vector<std::uint32_t> order_;
   std::vector<std::uint8_t> flip_;

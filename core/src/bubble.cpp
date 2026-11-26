@@ -165,6 +165,7 @@ void BubbleSource::build(const Params& params, int, double age, std::span<XY> ta
   // Bubbles are already in order along the track: keep it, so the picture
   // is drawn the way the particle flew.
   if (params.voice.timing == Timing::Harmonic) {
+    grid_.setSolveOrder(false); // bubbles stay in the order the particle flew
     grid_.build(strokes_, table); // every bubble on a grid of equal slots
     return;
   }

@@ -55,7 +55,8 @@ key that is still held. With more voices it plays chords: see Polyphony below.
 | | Attack, Release | Grow and shrink times. Release 0 is a hard rest: silent within half a millisecond. |
 | | Glide | Slide time between overlapping notes. Mono only. |
 | | Bend range | Pitch-wheel range in semitones. In Drone mode the wheel bends the root. |
-| Output | Quality | Scope-exact: no filtering, the truest picture. Clean: 4x oversampled with a gentle low-pass, less aliasing in the sound, 4 samples of latency. Corners round very slightly and the beam overshoots a little where it jumps. |
+| Output | Timing | How the period is shared out along the path: see Timing below. |
+| | Quality | Scope-exact: no filtering, the truest picture. Clean: 4x oversampled with a gentle low-pass, less aliasing in the sound, 4 samples of latency. Corners round very slightly and the beam overshoots a little where it jumps. |
 | | Output gain | Trim. |
 | | Persistence | How long the built-in display glows. Does not affect the sound. |
 
@@ -83,6 +84,25 @@ rate, the chord's fundamental, and every note is snapped to the nearest overtone
 
 A track lives about two seconds (alpha 2.0 s, muon 2.4 s, electron 1.8 s). With the wall on, the wall
 carries on alone after that. With the wall off, a note held longer goes silent.
+
+### Timing
+
+All three instruments have this control.
+
+- **Even** spreads the period along the path by length, so every line is equally bright. It takes
+  no account of the sound.
+- **Harmonic** (the default) solves for the drawing with the sound in mind. The period is cut into
+  equal slots, 2, 3, 4, 6, 8, 12, 16 ... of them, and each stroke gets a whole number, so the rhythm
+  of the strokes falls on octaves and fifths of the note. Then the order and direction of the strokes
+  are rearranged, as long as the jumps between them do not grow much, to move energy out of the
+  harmonics that clash with the scale (the 7th, 11th, 13th ...) and into those that agree with it.
+  It solves once at the start of a note and then holds, so the tone is steady.
+
+What it buys depends on how much there is to rearrange. Measured as the share of the sound's energy
+in consonant harmonics: CS Orbital, with many wires, goes from 0.85 to 0.89 and improves on four notes
+in five; CS Bubble and CS Chamber barely change, because a row of bubbles or a single track leaves
+little choice. The price is brightness: a stroke rounded up to a whole slot is drawn slower, and so
+brighter, than one rounded down.
 
 ## CS Bubble (instrument)
 
