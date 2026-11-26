@@ -1,9 +1,11 @@
 # cscore: the shared DSP core. No JUCE, no platform code.
 add_library(cscore STATIC
+  src/bubble.cpp
   src/chamber_engine.cpp
   src/cscore.cpp
   src/hits.cpp
   src/mux_engine.cpp
+  src/orbital.cpp
   src/path.cpp
   src/scope_view.cpp
   src/tracks.cpp

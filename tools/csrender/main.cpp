@@ -18,7 +18,10 @@ const char* kUsage =
     "csrender %s\n"
     "\n"
     "  csrender notes --out PREFIX [--notes NOTE:START:DUR[:VEL],...] [options]\n"
-    "      Play a note list through the CS Chamber voice.\n"
+    "      Play a note list through an instrument: --instrument chamber (default), bubble or orbital.\n"
+    "      bubble:  --type auto|electron|pair|decay|beam|random   --field F   --bubbles N   --growth R   --boil B   --form MS\n"
+    "      orbital: --orbital auto|1s|2s|2pz|2px|3dz2|...|4fz3   --spin DEG/S   --tilt DEG   --lines N   --level L   --bloom MS\n"
+    "      chamber:\n"
     "      --type auto|alpha|muon|electron|random   --seed-mode random|key|global   --seed N\n"
     "      --wall off|shared|drone   --root NOTE   --share P\n"
     "      --diffusion R   --drift R   --condense MS   --size S   --attack MS   --release MS   --glide MS   --gain DB   --quality exact|clean   --voices N\n"
@@ -90,7 +93,112 @@ std::vector<Note> parseNotes(const std::string& text) {
   return notes;
 }
 
+// Plays the note list through any engine with noteOn / noteOff / process.
+template <typename Engine>
+csio::Audio playNotes(Engine& voice, const std::vector<Note>& notes, double sampleRate, double tail) {
+  double end = 0.0;
+  for (const Note& n : notes)
+    end = std::max(end, n.start + n.duration);
+  const auto total = static_cast<std::size_t>((end + tail + 0.05) * sampleRate);
+  struct Event {
+    std::size_t at;
+    bool on;
+    std::size_t index;
+  };
+  std::vector<Event> events;
+  for (std::size_t i = 0; i < notes.size(); ++i) {
+    events.push_back({static_cast<std::size_t>(std::llround(notes[i].start * sampleRate)), true, i});
+    events.push_back({static_cast<std::size_t>(std::llround((notes[i].start + notes[i].duration) * sampleRate)), false, i});
+  }
+  std::stable_sort(events.begin(), events.end(), [](const Event& a, const Event& b) {
+    return a.at != b.at ? a.at < b.at : (!a.on && b.on); // offs before ons at the same sample
+  });
+  csio::Audio audio;
+  audio.sampleRate = sampleRate;
+  audio.x.assign(total, 0.0f);
+  audio.y.assign(total, 0.0f);
+  std::size_t pos = 0;
+  auto advance = [&](std::size_t to) {
+    to = std::min(to, total);
+    if (to > pos)
+      voice.process(audio.x.data() + pos, audio.y.data() + pos, static_cast<int>(to - pos));
+    pos = std::max(pos, to);
+  };
+  for (const Event& e : events) {
+    advance(e.at);
+    if (e.on)
+      voice.noteOn(notes[e.index].note, notes[e.index].velocity);
+    else
+      voice.noteOff(notes[e.index].note);
+  }
+  advance(total);
+  return audio;
+}
+
+void readVoice(const Args& args, cs::VoiceParams& v) {
+  v.size = args.num("size", v.size);
+  v.attackMs = args.num("attack", v.attackMs);
+  v.releaseMs = args.num("release", v.releaseMs);
+  v.glideMs = args.num("glide", v.glideMs);
+  v.gainDb = args.num("gain", v.gainDb);
+  v.quality = choose<cs::Quality>(args, "quality", {{"exact", cs::Quality::ScopeExact}, {"clean", cs::Quality::Clean}}, v.quality);
+}
+
+csio::Audio renderBubble(const Args& args, double sampleRate) {
+  cs::BubbleParams p;
+  readVoice(args, p.voice);
+  p.type = choose<cs::BubbleType>(args, "type",
+                                  {{"auto", cs::BubbleType::Auto},
+                                   {"electron", cs::BubbleType::Electron},
+                                   {"pair", cs::BubbleType::Pair},
+                                   {"decay", cs::BubbleType::Decay},
+                                   {"beam", cs::BubbleType::Beam},
+                                   {"random", cs::BubbleType::Random}},
+                                  p.type);
+  p.seed = static_cast<std::uint64_t>(args.num("seed", 1));
+  p.field = args.num("field", p.field);
+  p.bubbles = static_cast<int>(args.num("bubbles", p.bubbles));
+  p.growth = args.num("growth", p.growth);
+  p.boil = args.num("boil", p.boil);
+  p.formMs = args.num("form", p.formMs);
+  cs::BubbleEngine voice;
+  voice.prepare(sampleRate);
+  voice.setParams(p);
+  return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
+}
+
+csio::Audio renderOrbital(const Args& args, double sampleRate) {
+  cs::OrbitalParams p;
+  readVoice(args, p.voice);
+  if (args.has("orbital")) {
+    p.orbital = -1;
+    for (std::size_t i = 0; i < cs::kOrbitals.size(); ++i)
+      if (args.str("orbital", "") == cs::kOrbitals[i].name)
+        p.orbital = static_cast<int>(i) + 1;
+    if (args.str("orbital", "") == "auto")
+      p.orbital = 0;
+    if (p.orbital < 0)
+      fail("unknown orbital '" + args.str("orbital", "") + "' (try 1s, 2pz, 3dz2, 4fz3, auto)");
+  }
+  p.spin = args.num("spin", p.spin);
+  p.tilt = args.num("tilt", p.tilt);
+  p.lines = static_cast<int>(args.num("lines", p.lines));
+  p.level = args.num("level", p.level);
+  p.bloomMs = args.num("bloom", p.bloomMs);
+  cs::OrbitalEngine voice;
+  voice.prepare(sampleRate);
+  voice.setParams(p);
+  return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
+}
+
 csio::Audio renderNotes(const Args& args, double sampleRate) {
+  const std::string instrument = args.str("instrument", "chamber");
+  if (instrument == "bubble")
+    return renderBubble(args, sampleRate);
+  if (instrument == "orbital")
+    return renderOrbital(args, sampleRate);
+  if (instrument != "chamber")
+    fail("unknown instrument '" + instrument + "' (chamber, bubble, orbital)");
   cs::ChamberParams p;
   p.type = choose<cs::TypeMode>(args, "type",
                                 {{"auto", cs::TypeMode::Auto},

@@ -3,12 +3,15 @@
 // CS Chamber engine, the YIN tracker, the CS Mux serializer and the scope view.
 #pragma once
 
+#include "cscore/bubble.h"
 #include "cscore/chamber_engine.h"
 #include "cscore/decimator.h"
 #include "cscore/envelope.h"
 #include "cscore/hits.h"
 #include "cscore/lockfree.h"
+#include "cscore/mono_engine.h"
 #include "cscore/mux_engine.h"
+#include "cscore/orbital.h"
 #include "cscore/oscillator.h"
 #include "cscore/path.h"
 #include "cscore/pitch.h"
