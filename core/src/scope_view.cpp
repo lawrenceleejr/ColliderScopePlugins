@@ -32,7 +32,7 @@ void blur(const std::vector<float>& in, std::vector<float>& img, int size, doubl
     kernel[i] /= sum;
 
   const auto n = static_cast<std::size_t>(size);
-  tmp.assign(in.size(), 0.0f);
+  tmp.resize(in.size());
   pad.resize(n + 2 * static_cast<std::size_t>(radius));
   for (std::size_t row = 0; row < n; ++row) { // along rows
     const float* src = in.data() + row * n;
@@ -40,21 +40,32 @@ void blur(const std::vector<float>& in, std::vector<float>& img, int size, doubl
     std::fill(pad.begin(), pad.begin() + radius, src[0]);
     std::copy(src, src + n, pad.begin() + radius);
     std::fill(pad.begin() + radius + size, pad.end(), src[n - 1]);
-    for (int k = 0; k <= 2 * radius; ++k) {
-      const float w = kernel[k];
-      const float* p = pad.data() + k;
+    // The kernel is symmetric: add each pair of taps in one pass.
+    const float* centre = pad.data() + radius;
+    const float w0 = kernel[radius];
+    for (std::size_t c = 0; c < n; ++c)
+      dst[c] = w0 * centre[c];
+    for (int k = 1; k <= radius; ++k) {
+      const float w = kernel[radius + k];
+      const float* lo = centre - k;
+      const float* hi = centre + k;
       for (std::size_t c = 0; c < n; ++c)
-        dst[c] += w * p[c];
+        dst[c] += w * (lo[c] + hi[c]);
     }
   }
-  img.assign(in.size(), 0.0f);
+  img.resize(in.size());
   for (int row = 0; row < size; ++row) { // along columns
     float* dst = img.data() + static_cast<std::size_t>(row) * n;
-    for (int k = -radius; k <= radius; ++k) {
-      const float w = kernel[k + radius];
-      const float* src = tmp.data() + static_cast<std::size_t>(std::clamp(row + k, 0, size - 1)) * n;
+    const float* mid = tmp.data() + static_cast<std::size_t>(row) * n;
+    const float w0 = kernel[radius];
+    for (std::size_t c = 0; c < n; ++c)
+      dst[c] = w0 * mid[c];
+    for (int k = 1; k <= radius; ++k) {
+      const float w = kernel[radius + k];
+      const float* lo = tmp.data() + static_cast<std::size_t>(std::max(row - k, 0)) * n;
+      const float* hi = tmp.data() + static_cast<std::size_t>(std::min(row + k, size - 1)) * n;
       for (std::size_t c = 0; c < n; ++c)
-        dst[c] += w * src[c];
+        dst[c] += w * (lo[c] + hi[c]);
     }
   }
 }
