@@ -3,6 +3,8 @@
 // reference (pipeline_batch05_cloud_song.py).
 #pragma once
 
+#include <array>
+#include <span>
 #include <vector>
 
 #include "cscore/path.h"
@@ -60,5 +62,28 @@ HarmonicSplit harmonicSplit(int h, double target = 0.45) noexcept;
 
 // Nearest overtone of `rootHz` to `noteHz`, within the range the split allows.
 int nearestHarmonic(double noteHz, double rootHz) noexcept;
+
+// Polyphony on one beam. The picture still repeats once per period, at a
+// shared fundamental f0 = base / k. Voice i is drawn m[i] times, each pass
+// lasting 1 / h[i] of the period, so it rings as overtone h[i] of f0: its
+// note snapped to the nearest one. What is left of the period goes to the
+// wall (when there is one) or to one more, slower pass of the lowest voice.
+inline constexpr int kMaxVoices = 6;
+
+struct ChordPlan {
+  double f0 = 0.0;   // Hz: the rate at which the whole picture repeats
+  int k = 1;         // base / f0
+  int count = 0;
+  std::array<int, kMaxVoices> h{}; // overtone of f0 per voice
+  std::array<int, kMaxVoices> m{}; // passes per period per voice
+  double wall = 0.0;   // share of the period for the wall
+  double filler = 0.0; // share left over when there is no wall
+  double maxErrorCents = 0.0; // worst snap, in cents
+};
+
+// hz: the voices' note frequencies. baseHz: the lowest note, or the wall's
+// root in Drone mode. wallMin: the least share the wall may get (0 = no
+// wall); wallTarget: the share to aim for.
+ChordPlan planChord(std::span<const double> hz, double baseHz, double wallMin, double wallTarget) noexcept;
 
 } // namespace cs

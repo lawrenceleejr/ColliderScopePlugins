@@ -51,6 +51,7 @@ struct ChamberParams {
   double bendRange = 2.0;      // 0-12 semitones
   double gainDb = 0.0;         // -24 to 0 dB
   Quality quality = Quality::ScopeExact;
+  int voices = 1;              // 1 = mono; 2-6 = polyphonic, voices sharing each period
   std::uint64_t seed = 1;      // base seed for all three seed modes
 };
 
@@ -91,15 +92,24 @@ private:
   struct Frame {
     std::array<XY, kTableSize> table{};
     std::uint32_t serial = 0;
+    double periodHz = 0.0; // polyphonic: the fundamental the builder chose
+  };
+  struct Held {
+    std::int32_t note = 0, velocity = 0;
+    std::uint32_t birth = 0;      // identifies this key press
+    std::int64_t birthClock = 0;  // when it was pressed, in samples
   };
   struct BuilderInput {
     ChamberParams params;
     std::uint32_t serial = 0;
     std::int32_t note = 69;
     std::int32_t velocity = 80;
+    std::int32_t voiceCount = 0; // polyphonic: the keys held, oldest first
+    std::array<Held, kMaxVoices> voices{};
   };
-  struct Held {
-    std::int8_t note = 0, velocity = 0;
+  struct PolyVoice {
+    std::uint32_t birth = 0;
+    Track track;
   };
 
   // audio side
@@ -109,10 +119,14 @@ private:
   void updateStep() noexcept;
   void publishInput() noexcept;
   void serviceInline() noexcept;
+  bool poly() const noexcept { return params_.voices > 1; }
+  void startChord() noexcept;
   void newPeriod(bool sync) noexcept;
   // builder side
   bool serviceLocked();
   void build(const BuilderInput& in, double age);
+  void buildChord(const BuilderInput& in);
+  Track birthTrack(const ChamberParams& params, int note, int velocity, std::uint32_t serial, std::uint64_t& seed) const;
 
   // --- audio thread state ---
   ChamberParams params_;
@@ -128,6 +142,9 @@ private:
   std::uint32_t pendingSerial_ = 0;
   std::uint32_t serial_ = 0;
   std::uint32_t serialCounter_ = 0;
+  std::uint32_t birthCounter_ = 0;
+  double polyHz_ = 0.0;
+  BuilderInput lastInput_;
   double pitch_ = 69.0, pitchTarget_ = 69.0, glideStep_ = 0.0;
   std::int64_t glideLeft_ = 0;
   double bend_ = 0.0;
@@ -157,6 +174,7 @@ private:
   Stroke wall_ = wallStroke();
   std::vector<Stroke> strokes_;
   std::vector<Segment> segments_;
+  std::array<PolyVoice, kMaxVoices> polyVoices_{};
 };
 
 } // namespace cs

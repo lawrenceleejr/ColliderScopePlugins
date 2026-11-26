@@ -34,7 +34,10 @@ void ChamberEngine::prepare(double sampleRate) {
 // ---------------------------------------------------------------- audio side
 
 void ChamberEngine::setParams(const ChamberParams& params) noexcept {
+  if ((params.voices > 1) != (params_.voices > 1))
+    allNotesOff(); // mono and polyphonic voices are built differently: start clean
   params_ = params;
+  params_.voices = std::clamp(params.voices, 1, kMaxVoices);
   env_.setAttack(params.attackMs * 1e-3);
   env_.setRelease(params.releaseMs * 1e-3);
   gain_ = static_cast<float>(std::clamp(params.size, 0.0, 1.0) * std::pow(10.0, std::min(params.gainDb, 0.0) / 20.0));
@@ -48,11 +51,27 @@ void ChamberEngine::publishInput() noexcept {
   in.serial = pending_ ? pendingSerial_ : serial_;
   in.note = note_;
   in.velocity = velocity_;
+  if (heldCount_ > 0) {
+    // The newest keys, up to the voice limit, oldest first.
+    const int count = std::min(heldCount_, params_.voices);
+    in.voiceCount = count;
+    for (int i = 0; i < count; ++i)
+      in.voices[static_cast<std::size_t>(i)] = held_[static_cast<std::size_t>(heldCount_ - count + i)];
+  } else {
+    // Nothing held: the release tail keeps drawing the last chord.
+    in.voiceCount = lastInput_.voiceCount;
+    in.voices = lastInput_.voices;
+  }
+  lastInput_ = in;
   input_.write(in);
 }
 
 void ChamberEngine::updateStep() noexcept {
   const double bend = bend_ * params_.bendRange;
+  if (poly() && polyHz_ > 0.0) {
+    step_ = polyHz_ * std::exp2(bend / 12.0) / sampleRate_; // the builder chose the fundamental
+    return;
+  }
   const double note = params_.wall == WallMode::Drone ? params_.wallRoot + bend : pitch_ + bend;
   step_ = midiToHz(note) / sampleRate_;
 }
@@ -80,9 +99,12 @@ void ChamberEngine::noteOn(int note, int velocity) noexcept {
     std::copy(held_.begin() + 1, held_.end(), held_.begin());
     --n;
   }
-  held_[static_cast<std::size_t>(n)] = {static_cast<std::int8_t>(note), static_cast<std::int8_t>(velocity)};
+  held_[static_cast<std::size_t>(n)] = {note, velocity, ++birthCounter_, clock_};
   heldCount_ = n + 1;
-  startNote(note, velocity);
+  if (poly())
+    startChord();
+  else
+    startNote(note, velocity);
 }
 
 void ChamberEngine::noteOff(int note) noexcept {
@@ -95,6 +117,17 @@ void ChamberEngine::noteOff(int note) noexcept {
       held_[static_cast<std::size_t>(n++)] = held_[static_cast<std::size_t>(i)];
   }
   heldCount_ = n;
+  if (poly()) {
+    if (!found)
+      return;
+    if (heldCount_ == 0) {
+      pending_ = false;
+      env_.gate(false);
+    } else {
+      startChord(); // the remaining keys share the beam between them
+    }
+    return;
+  }
   if (!found || note != note_)
     return; // not the note that is sounding
   if (heldCount_ == 0) {
@@ -129,9 +162,42 @@ void ChamberEngine::startNote(int note, int velocity) noexcept {
   }
 }
 
+void ChamberEngine::startChord() noexcept {
+  // The set of keys changed: the builder plans a new picture for the chord.
+  int lowest = 127;
+  const int count = std::min(heldCount_, params_.voices);
+  for (int i = heldCount_ - count; i < heldCount_; ++i)
+    lowest = std::min(lowest, static_cast<int>(held_[static_cast<std::size_t>(i)].note));
+  note_ = lowest;
+  velocity_ = held_[static_cast<std::size_t>(heldCount_ - 1)].velocity;
+  if (++serialCounter_ == 0)
+    ++serialCounter_;
+  pendingSerial_ = serialCounter_;
+  pendingLegato_ = false;
+  pending_ = true;
+  publishInput();
+  if (synchronous_.load(std::memory_order_relaxed)) {
+    serviceInline();
+    takeFrame();
+  }
+}
+
 void ChamberEngine::applyPending() noexcept {
   pending_ = false;
   serial_ = pendingSerial_;
+  if (poly()) {
+    if (!active_) {
+      osc_.reset();
+      cleanX_.reset();
+      cleanY_.reset();
+    }
+    glideLeft_ = 0;
+    active_ = true;
+    env_.gate(true);
+    polyHz_ = frames_.front().periodHz;
+    updateStep();
+    return;
+  }
   pitchTarget_ = note_;
   const auto glide = static_cast<std::int64_t>(params_.glideMs * 1e-3 * sampleRate_);
   if (pendingLegato_ && glide > 0) {
@@ -160,6 +226,10 @@ void ChamberEngine::takeFrame() noexcept {
   awaitingBuild_ = false;
   if (pending_ && frames_.front().serial == pendingSerial_)
     applyPending();
+  else if (poly() && frames_.front().periodHz > 0.0 && frames_.front().periodHz != polyHz_) {
+    polyHz_ = frames_.front().periodHz;
+    updateStep();
+  }
 }
 
 void ChamberEngine::serviceInline() noexcept {
@@ -244,38 +314,44 @@ bool ChamberEngine::serviceLocked() {
   if (in.serial == 0)
     return false;
 
+  if (in.params.voices > 1) {
+    if (in.voiceCount <= 0)
+      return false;
+    const std::uint32_t request = buildRequest_.load();
+    if (in.serial == builtSerial_ && (request == servedRequest_ || frames_.hasFresh()))
+      return false;
+    if (in.serial != builtSerial_) {
+      // The chord changed: keep the tracks of keys still held, birth the new ones.
+      std::array<PolyVoice, kMaxVoices> next{};
+      for (int i = 0; i < in.voiceCount; ++i) {
+        const Held& key = in.voices[static_cast<std::size_t>(i)];
+        PolyVoice& voice = next[static_cast<std::size_t>(i)];
+        voice.birth = key.birth;
+        bool kept = false;
+        for (PolyVoice& old : polyVoices_) {
+          if (old.birth == key.birth && !old.track.points.empty()) {
+            voice.track = std::move(old.track);
+            kept = true;
+            break;
+          }
+        }
+        if (!kept) {
+          std::uint64_t seed = 0;
+          voice.track = birthTrack(in.params, key.note, key.velocity, key.birth, seed);
+        }
+      }
+      polyVoices_ = std::move(next);
+      builtSerial_ = in.serial;
+    }
+    servedRequest_ = request;
+    buildChord(in);
+    return true;
+  }
+
   if (in.serial != builtSerial_) {
     // A new note: birth its track.
-    std::uint64_t seed = in.params.seed * 0x9e3779b97f4a7c15ULL;
-    switch (in.params.seedMode) {
-    case SeedMode::Random:
-      seed += 0x1000 + in.serial;
-      break;
-    case SeedMode::PerKey:
-      seed += static_cast<std::uint64_t>(in.note & 0x7f);
-      break;
-    case SeedMode::Global:
-      break;
-    }
-    Rng rng(seed);
-    TrackType type = typeForVelocity(in.velocity);
-    switch (in.params.type) {
-    case TypeMode::Auto:
-      break;
-    case TypeMode::Alpha:
-      type = TrackType::Alpha;
-      break;
-    case TypeMode::Muon:
-      type = TrackType::Muon;
-      break;
-    case TypeMode::Electron:
-      type = TrackType::Electron;
-      break;
-    case TypeMode::Random:
-      type = static_cast<TrackType>(rng.next() % 3);
-      break;
-    }
-    track_ = makeTrack(type, rng);
+    std::uint64_t seed = 0;
+    track_ = birthTrack(in.params, in.note, in.velocity, in.serial, seed);
     noise_.reseed(seed ^ 0xd1b54a32d192ed03ULL);
     builtSerial_ = in.serial;
     servedRequest_ = buildRequest_.load();
@@ -292,6 +368,126 @@ bool ChamberEngine::serviceLocked() {
                          : 0.0;
   build(in, std::max(0.0, age));
   return true;
+}
+
+Track ChamberEngine::birthTrack(const ChamberParams& params, int note, int velocity, std::uint32_t serial,
+                                std::uint64_t& seed) const {
+  seed = params.seed * 0x9e3779b97f4a7c15ULL;
+  switch (params.seedMode) {
+  case SeedMode::Random:
+    seed += 0x1000 + serial;
+    break;
+  case SeedMode::PerKey:
+    seed += static_cast<std::uint64_t>(note & 0x7f);
+    break;
+  case SeedMode::Global:
+    break;
+  }
+  Rng rng(seed);
+  TrackType type = typeForVelocity(velocity);
+  switch (params.type) {
+  case TypeMode::Auto:
+    break;
+  case TypeMode::Alpha:
+    type = TrackType::Alpha;
+    break;
+  case TypeMode::Muon:
+    type = TrackType::Muon;
+    break;
+  case TypeMode::Electron:
+    type = TrackType::Electron;
+    break;
+  case TypeMode::Random:
+    type = static_cast<TrackType>(rng.next() % 3);
+    break;
+  }
+  return makeTrack(type, rng);
+}
+
+void ChamberEngine::buildChord(const BuilderInput& in) {
+  const ChamberParams& p = in.params;
+  const std::int64_t now = clockShared_.load();
+  const int count = std::min(in.voiceCount, kMaxVoices);
+
+  if (count == 1) {
+    // One key: exactly the mono picture.
+    const Held& key = in.voices[0];
+    track_ = polyVoices_[0].track;
+    BuilderInput one = in;
+    one.note = key.note;
+    one.velocity = key.velocity;
+    build(one, std::max(0.0, static_cast<double>(now - key.birthClock) / builderSampleRate_));
+    return;
+  }
+
+  // Voices in pitch order, lowest first.
+  std::array<int, kMaxVoices> order{};
+  for (int i = 0; i < count; ++i)
+    order[static_cast<std::size_t>(i)] = i;
+  std::sort(order.begin(), order.begin() + count, [&](int a, int b) {
+    return in.voices[static_cast<std::size_t>(a)].note < in.voices[static_cast<std::size_t>(b)].note;
+  });
+  std::array<double, kMaxVoices> hz{};
+  for (int i = 0; i < count; ++i)
+    hz[static_cast<std::size_t>(i)] = midiToHz(in.voices[static_cast<std::size_t>(order[static_cast<std::size_t>(i)])].note);
+
+  const bool drone = p.wall == WallMode::Drone, hasWall = p.wall != WallMode::Off;
+  const double wallTarget = drone ? (p.wallShare > 0.0 ? p.wallShare : 0.45) : 0.3;
+  const ChordPlan plan = planChord(std::span<const double>(hz.data(), static_cast<std::size_t>(count)),
+                                   drone ? midiToHz(p.wallRoot) : hz[0], hasWall ? std::min(0.2, wallTarget) : 0.0,
+                                   hasWall ? wallTarget : 0.0);
+
+  const AgeingParams ageing{p.diffusionRate, p.drift, p.condenseMs * 1e-3};
+  Vec2 from = hasWall ? wall_.back() : Vec2{};
+  auto agedVoice = [&](int slot) {
+    const int index = order[static_cast<std::size_t>(slot)];
+    const Held& key = in.voices[static_cast<std::size_t>(index)];
+    const double age = std::max(0.0, static_cast<double>(now - key.birthClock) / builderSampleRate_);
+    strokes_.clear();
+    ageTrack(polyVoices_[static_cast<std::size_t>(index)].track, age, ageing, noise_, strokes_);
+    Path path = strokesToPath(orderStrokes(std::move(strokes_), from));
+    if (!path.empty())
+      from = {path.back().x, path.back().y};
+    return path;
+  };
+
+  segments_.clear();
+  double unused = plan.filler; // time no voice claims: tracks past their life give theirs up too
+  if (hasWall) {
+    Path wall;
+    appendStroke(wall, wall_);
+    segments_.push_back({std::move(wall), plan.wall});
+  }
+  for (int i = 0; i < count; ++i) {
+    const auto u = static_cast<std::size_t>(i);
+    for (int pass = 0; pass < plan.m[u]; ++pass) { // fresh diffusion noise on every pass
+      Path path = agedVoice(i);
+      if (path.empty())
+        unused += 1.0 / plan.h[u];
+      else
+        segments_.push_back({std::move(path), 1.0 / plan.h[u]});
+    }
+  }
+  if (unused > 1e-9) {
+    // Spend the rest on the wall, or on one more, slower pass of the lowest
+    // voice still alive: never on a parked beam.
+    if (hasWall) {
+      segments_.front().fraction += unused;
+    } else {
+      for (int i = 0; i < count; ++i) {
+        Path path = agedVoice(i);
+        if (!path.empty()) {
+          segments_.push_back({std::move(path), unused});
+          break;
+        }
+      }
+    }
+  }
+  Frame& frame = frames_.back();
+  buildTable(segments_, frame.table);
+  frame.serial = in.serial;
+  frame.periodHz = plan.f0;
+  frames_.publish();
 }
 
 void ChamberEngine::build(const BuilderInput& in, double age) {
@@ -342,6 +538,7 @@ void ChamberEngine::build(const BuilderInput& in, double age) {
   Frame& frame = frames_.back();
   buildTable(segments_, frame.table);
   frame.serial = in.serial;
+  frame.periodHz = midiToHz(p.wall == WallMode::Drone ? p.wallRoot : in.note);
   frames_.publish();
 }
 

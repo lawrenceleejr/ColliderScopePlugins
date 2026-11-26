@@ -166,4 +166,87 @@ int nearestHarmonic(double noteHz, double rootHz) noexcept {
   return static_cast<int>(std::clamp(h, static_cast<double>(kMinHarmonic), static_cast<double>(kMaxHarmonic)));
 }
 
+ChordPlan planChord(std::span<const double> hz, double baseHz, double wallMin, double wallTarget) noexcept {
+  ChordPlan best;
+  const int count = static_cast<int>(std::min<std::size_t>(hz.size(), kMaxVoices));
+  best.count = count;
+  if (count == 0 || !(baseHz > 0.0))
+    return best;
+
+  // Find the fundamental: the smallest k whose overtones sit within 15 cents
+  // of every note and leave room for one pass of each voice. A slow
+  // fundamental flickers, so stay above 20 Hz if any k there works.
+  constexpr int kMaxK = 24;
+  constexpr double kGoodCents = 15.0;
+  auto evaluate = [&](int k, std::array<int, kMaxVoices>& h, double& error, double& once) {
+    const double f0 = baseHz / k;
+    error = once = 0.0;
+    for (int i = 0; i < count; ++i) {
+      h[static_cast<std::size_t>(i)] = std::max(1, static_cast<int>(std::lround(hz[static_cast<std::size_t>(i)] / f0)));
+      error = std::max(error, std::abs(1200.0 * std::log2(h[static_cast<std::size_t>(i)] * f0 / hz[static_cast<std::size_t>(i)])));
+      once += 1.0 / h[static_cast<std::size_t>(i)];
+    }
+  };
+  int chosen = 0;
+  double chosenError = 1e9;
+  for (int pass = 0; pass < 2 && chosen == 0; ++pass) {
+    for (int k = 1; k <= kMaxK; ++k) {
+      if (pass == 0 && baseHz / k < 20.0)
+        break;
+      std::array<int, kMaxVoices> h{};
+      double error = 0.0, once = 0.0;
+      evaluate(k, h, error, once);
+      if (once > 1.0 - wallMin + 1e-9)
+        continue; // no room
+      if (error <= kGoodCents) {
+        chosen = k;
+        chosenError = error;
+        break;
+      }
+      if (error < chosenError - 1e-9) {
+        chosen = k;
+        chosenError = error;
+      }
+    }
+  }
+  if (chosen == 0)
+    chosen = kMaxK;
+
+  double once = 0.0;
+  evaluate(chosen, best.h, best.maxErrorCents, once);
+  best.k = chosen;
+  best.f0 = baseHz / chosen;
+
+  // Passes: give every voice one, then keep adding to whichever has the
+  // smallest share of the period while the total still fits.
+  double used = 0.0;
+  for (int i = 0; i < count; ++i) {
+    best.m[static_cast<std::size_t>(i)] = 1;
+    used += 1.0 / best.h[static_cast<std::size_t>(i)];
+  }
+  const double limit = 1.0 - wallTarget + 1e-9;
+  for (;;) {
+    int pick = -1;
+    double smallest = 1e9;
+    for (int i = 0; i < count; ++i) {
+      const auto u = static_cast<std::size_t>(i);
+      const double share = static_cast<double>(best.m[u]) / best.h[u];
+      if (share < smallest && used + 1.0 / best.h[u] <= limit) {
+        smallest = share;
+        pick = i;
+      }
+    }
+    if (pick < 0)
+      break;
+    ++best.m[static_cast<std::size_t>(pick)];
+    used += 1.0 / best.h[static_cast<std::size_t>(pick)];
+  }
+  const double left = std::max(0.0, 1.0 - used);
+  if (wallMin > 0.0)
+    best.wall = left;
+  else
+    best.filler = left;
+  return best;
+}
+
 } // namespace cs

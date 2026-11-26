@@ -21,7 +21,7 @@ const char* kUsage =
     "      Play a note list through the CS Chamber voice.\n"
     "      --type auto|alpha|muon|electron|random   --seed-mode random|key|global   --seed N\n"
     "      --wall off|shared|drone   --root NOTE   --share P\n"
-    "      --diffusion R   --drift R   --condense MS   --size S   --attack MS   --release MS   --glide MS   --gain DB   --quality exact|clean\n"
+    "      --diffusion R   --drift R   --condense MS   --size S   --attack MS   --release MS   --glide MS   --gain DB   --quality exact|clean   --voices N\n"
     "  csrender hit kick|snare|crash --out PREFIX [--radius R] [--seed N]\n"
     "      Render one drum hit.\n"
     "  csrender mux A.wav B.wav --out PREFIX [--mode interleave|lock|slot] [options]\n"
@@ -107,6 +107,7 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
       p.wall);
   p.quality = choose<cs::Quality>(args, "quality", {{"exact", cs::Quality::ScopeExact}, {"clean", cs::Quality::Clean}},
                                   p.quality);
+  p.voices = static_cast<int>(args.num("voices", 1));
   p.seed = static_cast<std::uint64_t>(args.num("seed", 1));
   p.wallRoot = static_cast<int>(args.num("root", p.wallRoot));
   p.wallShare = args.num("share", p.wallShare);
@@ -125,8 +126,7 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
     end = std::max(end, n.start + n.duration);
   const auto total = static_cast<std::size_t>((end + p.releaseMs * 1e-3 + 0.05) * sampleRate);
 
-  // Sample-accurate events. Mono: a new note takes over; a note-off only
-  // silences the note that is still sounding.
+  // Sample-accurate events. The engine keeps track of which keys are held.
   struct Event {
     std::size_t at;
     bool on;
@@ -148,7 +148,7 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
   audio.sampleRate = sampleRate;
   audio.x.assign(total, 0.0f);
   audio.y.assign(total, 0.0f);
-  std::size_t pos = 0, current = notes.size();
+  std::size_t pos = 0;
   auto advance = [&](std::size_t to) {
     to = std::min(to, total);
     if (to > pos)
@@ -157,12 +157,10 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
   };
   for (const Event& e : events) {
     advance(e.at);
-    if (e.on) {
+    if (e.on)
       voice.noteOn(notes[e.index].note, notes[e.index].velocity);
-      current = e.index;
-    } else if (current == e.index) {
+    else
       voice.noteOff(notes[e.index].note);
-    }
   }
   advance(total);
   return audio;
