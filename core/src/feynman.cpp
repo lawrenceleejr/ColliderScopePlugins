@@ -41,7 +41,7 @@ const std::vector<FeynmanDiagram>& feynmanDiagrams() {
        2},
       // Beta decay: a down quark turns into an up quark and a W, which gives an electron and a neutrino.
       {"Beta decay",
-       {{-0.8, -0.35}, {0.8, -0.55}, {0.8, 0.55}, {0.8, 0.05}, {-0.15, -0.3}, {0.3, 0.25}},
+       {{-0.8, -0.35}, {0.8, -0.5}, {0.8, 0.5}, {0.8, 0.05}, {-0.15, -0.3}, {0.3, 0.25}},
        {{0, 4, L::Fermion}, {4, 1, L::Fermion}, {4, 5, L::Photon}, {5, 2, L::Fermion}, {3, 5, L::Fermion}},
        4},
       // A photon turns briefly into an electron pair.
@@ -189,18 +189,25 @@ void FeynmanSource::build(const Params& params, int, double age, std::span<XY> t
     const double limit = -0.85 + 1.7 * age / (params.formMs * 1e-3);
     std::vector<Stroke> shown;
     for (const Stroke& s : strokes_) {
+      // Keep the part of each stroke left of the limit, cutting it exactly there.
       Stroke run;
-      for (const Vec2& p : s) {
-        if (p.x <= limit) {
-          run.push_back(p);
-        } else {
-          if (run.size() >= 2)
-            shown.push_back(run);
-          run.clear();
+      auto flush = [&] {
+        if (run.size() >= 2)
+          shown.push_back(run);
+        run.clear();
+      };
+      for (std::size_t i = 0; i < s.size(); ++i) {
+        const bool in = s[i].x <= limit;
+        if (i > 0 && in != (s[i - 1].x <= limit)) {
+          const double u = (limit - s[i - 1].x) / (s[i].x - s[i - 1].x);
+          run.push_back({limit, s[i - 1].y + (s[i].y - s[i - 1].y) * u});
+          if (!in)
+            flush();
         }
+        if (in)
+          run.push_back(s[i]);
       }
-      if (run.size() >= 2)
-        shown.push_back(std::move(run));
+      flush();
     }
     strokes_ = std::move(shown);
   }
