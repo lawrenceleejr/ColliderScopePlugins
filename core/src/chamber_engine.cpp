@@ -436,6 +436,7 @@ void ChamberEngine::buildChord(const BuilderInput& in) {
   const ChordPlan plan = planChord(std::span<const double>(hz.data(), static_cast<std::size_t>(count)),
                                    drone ? midiToHz(p.wallRoot) : hz[0], hasWall ? std::min(0.2, wallTarget) : 0.0,
                                    hasWall ? wallTarget : 0.0);
+  chordPlan_ = plan;
 
   const AgeingParams ageing{p.diffusionRate, p.drift, p.condenseMs * 1e-3};
   Vec2 from = hasWall ? wall_.back() : Vec2{};

@@ -87,6 +87,8 @@ public:
   int harmonic() const noexcept;
   // The current track. Builder state: read it only in synchronous mode.
   const Track& track() const noexcept { return track_; }
+  // The plan for the current chord (two or more keys). Builder state, as track().
+  const ChordPlan& chordPlan() const noexcept { return chordPlan_; }
 
 private:
   struct Frame {
@@ -175,6 +177,7 @@ private:
   std::vector<Stroke> strokes_;
   std::vector<Segment> segments_;
   std::array<PolyVoice, kMaxVoices> polyVoices_{};
+  ChordPlan chordPlan_;
 };
 
 } // namespace cs

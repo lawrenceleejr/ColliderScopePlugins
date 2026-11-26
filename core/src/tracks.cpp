@@ -178,7 +178,7 @@ ChordPlan planChord(std::span<const double> hz, double baseHz, double wallMin, d
   // fundamental flickers, so stay above 20 Hz if any k there works.
   constexpr int kMaxK = 24;
   constexpr double kGoodCents = 15.0;
-  constexpr double kElasticMin = 0.25, kElasticTarget = 0.34;
+  constexpr double kElasticMin = 0.15, kElasticTarget = 0.34;
   auto evaluate = [&](int k, std::array<int, kMaxVoices>& h, double& error, double& once, int& elastic) {
     const double f0 = baseHz / k;
     error = once = 0.0;
@@ -193,12 +193,13 @@ ChordPlan planChord(std::span<const double> hz, double baseHz, double wallMin, d
         once += 1.0 / h[u];
     }
   };
-  int chosen = 0;
-  double chosenError = 1e9;
+  int chosen = 0, fallback = 0;
+  double fallbackError = 1e9;
   for (int pass = 0; pass < 2 && chosen == 0; ++pass) {
     for (int k = 1; k <= kMaxK; ++k) {
-      if (pass == 0 && baseHz / k < 20.0)
-        break;
+      const bool slow = baseHz / k < 20.0;
+      if (slow != (pass == 1))
+        continue; // first the fundamentals fast enough not to flicker, then the rest
       std::array<int, kMaxVoices> h{};
       double error = 0.0, once = 0.0;
       int elastic = -1;
@@ -207,17 +208,16 @@ ChordPlan planChord(std::span<const double> hz, double baseHz, double wallMin, d
         continue; // no room
       if (error <= kGoodCents) {
         chosen = k;
-        chosenError = error;
         break;
       }
-      if (error < chosenError - 1e-9) {
-        chosen = k;
-        chosenError = error;
+      if (error < fallbackError - 1e-9) {
+        fallback = k;
+        fallbackError = error;
       }
     }
   }
   if (chosen == 0)
-    chosen = kMaxK;
+    chosen = fallback > 0 ? fallback : kMaxK; // nothing within 15 cents: the closest there is
 
   double used = 0.0;
   evaluate(chosen, best.h, best.maxErrorCents, used, best.elastic);
