@@ -519,11 +519,7 @@ void ChamberEngine::build(const BuilderInput& in, double age) {
     gridStrokes_.clear();
     if (p.wall == WallMode::Shared)
       gridStrokes_.push_back(wall_);
-    strokes_.clear();
-    ageTrack(track_, age, ageing, noise_, strokes_);
-    for (Stroke& s : orderStrokes(std::move(strokes_), p.wall == WallMode::Shared ? wallEnd : Vec2{}))
-      gridStrokes_.push_back(std::move(s));
-    strokes_.clear();
+    ageTrack(track_, age, ageing, noise_, gridStrokes_); // strands in the same order every time
     grid_.build(gridStrokes_, frame.table);
     frames_.publish();
     return;

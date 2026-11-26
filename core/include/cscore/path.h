@@ -3,6 +3,7 @@
 // spacing draws even lines; pen-up jumps get little time and stay faint.
 #pragma once
 
+#include <cstdint>
 #include <span>
 #include <vector>
 
@@ -84,18 +85,40 @@ int nextHarmonicGrid(int atLeast) noexcept;
 void buildTableOnGrid(const std::vector<Stroke>& ordered, std::span<XY> table, int slots,
                       double penUpWeight = kPenUpWeight);
 
-// Chooses the grid for a picture and remembers it while the number of
-// strokes stays the same, so the timbre does not flicker between rebuilds.
+// Solves for the drawing of a picture: which stroke follows which, in which
+// direction, on which grid. The order and direction of the strokes set the
+// beam's large movements, and so the low harmonics, so there is real room
+// to choose. It starts from the nearest-neighbour order and then, a couple
+// of trials per rebuild, tries swapping, reversing or moving strokes and
+// keeps a change when the spectrum becomes more consonant without the jumps
+// growing much. The arrangement persists while the number of strokes stays
+// the same (strokes must arrive in the same order every time), so the sound
+// settles over the first fraction of a second and then holds.
 class HarmonicGrid {
 public:
-  // Builds `table` from `ordered` on the best grid.
-  void build(const std::vector<Stroke>& ordered, std::span<XY> table, double penUpWeight = kPenUpWeight);
+  // Builds `table` from `strokes` (in a stable order of your choosing; the
+  // solver arranges them). `start` is where the beam comes from.
+  void build(const std::vector<Stroke>& strokes, std::span<XY> table, Vec2 start = {},
+             double penUpWeight = kPenUpWeight);
   int slots() const noexcept { return slots_; }
-  void reset() noexcept { count_ = 0; }
+  double score() const noexcept { return score_; }
+  void reset() noexcept { order_.clear(); }
 
 private:
-  std::size_t count_ = 0;
+  struct Arrangement {
+    std::vector<std::uint32_t> order;
+    std::vector<std::uint8_t> flip;
+  };
+  double arrange(const std::vector<Stroke>& strokes, const Arrangement& a, int slots, std::span<XY> table,
+                 double penUpWeight);
+
+  std::vector<std::uint32_t> order_;
+  std::vector<std::uint8_t> flip_;
   int slots_ = 0;
+  double score_ = 0.0;
+  std::uint64_t random_ = 0x9e3779b97f4a7c15ULL;
+  std::vector<Stroke> arranged_;
+  std::vector<XY> trial_;
 };
 
 } // namespace cs

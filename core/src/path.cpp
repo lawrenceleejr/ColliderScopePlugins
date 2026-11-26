@@ -252,30 +252,134 @@ void buildTableOnGrid(const std::vector<Stroke>& ordered, std::span<XY> table, i
   }
 }
 
-void HarmonicGrid::build(const std::vector<Stroke>& ordered, std::span<XY> table, double penUpWeight) {
-  std::size_t count = 0;
-  for (const Stroke& s : ordered)
-    count += !s.empty();
+double HarmonicGrid::arrange(const std::vector<Stroke>& strokes, const Arrangement& a, int slots, std::span<XY> table,
+                             double penUpWeight) {
+  arranged_.resize(a.order.size());
+  double drawn = 0.0, jumped = 0.0;
+  for (std::size_t i = 0; i < a.order.size(); ++i) {
+    Stroke& s = arranged_[i];
+    s = strokes[a.order[i]];
+    if (a.flip[i])
+      std::reverse(s.begin(), s.end());
+    for (std::size_t j = 1; j < s.size(); ++j)
+      drawn += dist(s[j - 1], s[j]);
+  }
+  for (std::size_t i = 0; i < arranged_.size(); ++i)
+    jumped += dist(arranged_[i].back(), arranged_[(i + 1) % arranged_.size()].front());
+  buildTableOnGrid(arranged_, table, slots, penUpWeight);
+  // Score a quarter of the points: harmonics up to 32 need no more.
+  trial_.resize(table.size() / 4);
+  for (std::size_t i = 0; i < trial_.size(); ++i)
+    trial_[i] = table[4 * i];
+  // Consonance, less a charge for jumps: a jump is drawn too, as a faint line.
+  return consonance(trial_) - 0.3 * jumped / (drawn + jumped + 1e-9);
+}
+
+void HarmonicGrid::build(const std::vector<Stroke>& strokes, std::span<XY> table, Vec2 start, double penUpWeight) {
+  std::vector<std::uint32_t> live;
+  for (std::size_t i = 0; i < strokes.size(); ++i)
+    if (!strokes[i].empty())
+      live.push_back(static_cast<std::uint32_t>(i));
+  const std::size_t count = live.size();
   if (count == 0) {
     std::fill(table.begin(), table.end(), XY{});
+    order_.clear();
     return;
   }
-  if (count != count_) {
-    // Try the next few grids that fit and keep the most consonant.
-    count_ = count;
+  auto next = [this]() { // xorshift: the solver's own dice
+    random_ ^= random_ << 13;
+    random_ ^= random_ >> 7;
+    random_ ^= random_ << 17;
+    return random_;
+  };
+
+  bool stale = order_.size() != count;
+  for (std::size_t i = 0; !stale && i < count; ++i)
+    stale = order_[i] >= strokes.size() || strokes[order_[i]].empty();
+  if (stale) {
+    // Start from the nearest-neighbour order, on the most consonant of the next few grids.
+    order_.clear();
+    flip_.clear();
+    std::vector<bool> left(count, true);
+    Vec2 p = start;
+    for (std::size_t n = 0; n < count; ++n) {
+      double best = 1e300;
+      std::size_t pick = 0;
+      bool reversed = false;
+      for (std::size_t i = 0; i < count; ++i) {
+        if (!left[i])
+          continue;
+        const Stroke& s = strokes[live[i]];
+        const double head = dist(s.front(), p), tail = dist(s.back(), p);
+        if (head < best) {
+          best = head;
+          pick = i;
+          reversed = false;
+        }
+        if (tail < best) {
+          best = tail;
+          pick = i;
+          reversed = true;
+        }
+      }
+      left[pick] = false;
+      order_.push_back(live[pick]);
+      flip_.push_back(reversed);
+      const Stroke& s = strokes[live[pick]];
+      p = reversed ? s.front() : s.back();
+    }
     int candidate = nextHarmonicGrid(static_cast<int>(count));
-    double best = -1.0;
+    score_ = -1e9;
     for (int tries = 0; tries < 4; ++tries) {
-      buildTableOnGrid(ordered, table, candidate, penUpWeight);
-      const double score = consonance(table);
-      if (score > best + 1e-6) {
-        best = score;
+      const double score = arrange(strokes, {order_, flip_}, candidate, table, penUpWeight);
+      if (score > score_ + 1e-6) {
+        score_ = score;
         slots_ = candidate;
       }
       candidate = nextHarmonicGrid(candidate + 1);
     }
+  } else {
+    // The picture has moved on since the score was taken: take it again.
+    score_ = arrange(strokes, {order_, flip_}, slots_, table, penUpWeight);
   }
-  buildTableOnGrid(ordered, table, slots_, penUpWeight);
+
+  // A couple of trials: swap two strokes, reverse one, or change the grid.
+  for (int trial = 0; trial < 2 && count > 1; ++trial) {
+    Arrangement a{order_, flip_};
+    int slots = slots_;
+    const std::uint64_t r = next();
+    const std::size_t i = (r >> 8) % count, j = (r >> 24) % count;
+    switch (r % 4) {
+    case 0:
+      std::swap(a.order[i], a.order[j]);
+      std::swap(a.flip[i], a.flip[j]);
+      break;
+    case 1:
+      a.flip[i] = !a.flip[i];
+      break;
+    case 2: { // reverse a run of strokes, as a whole
+      const std::size_t lo = std::min(i, j), hi = std::max(i, j);
+      std::reverse(a.order.begin() + static_cast<std::ptrdiff_t>(lo), a.order.begin() + static_cast<std::ptrdiff_t>(hi) + 1);
+      std::reverse(a.flip.begin() + static_cast<std::ptrdiff_t>(lo), a.flip.begin() + static_cast<std::ptrdiff_t>(hi) + 1);
+      for (std::size_t k = lo; k <= hi; ++k)
+        a.flip[k] = !a.flip[k];
+      break;
+    }
+    default:
+      slots = (r >> 40) % 2 ? nextHarmonicGrid(slots_ + 1) : std::max(nextHarmonicGrid(static_cast<int>(count)), slots_ / 2);
+      if (slots == slots_)
+        continue;
+      break;
+    }
+    const double score = arrange(strokes, a, slots, table, penUpWeight);
+    if (score > score_ + 0.002) { // only for a real gain: no dithering between equals
+      score_ = score;
+      order_ = std::move(a.order);
+      flip_ = std::move(a.flip);
+      slots_ = slots;
+    }
+  }
+  arrange(strokes, {order_, flip_}, slots_, table, penUpWeight);
 }
 
 } // namespace cs

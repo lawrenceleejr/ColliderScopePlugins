@@ -5,6 +5,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -406,4 +407,124 @@ TEST_CASE("Orbital: it spins, and it blooms from the lobe's core", "[orbital]") 
   CHECK(reach(480) < reach(4800));
   CHECK(reach(4800) < reach(14400));
   CHECK_THAT(reach(14400), WithinAbs(0.9, 0.01));
+}
+
+// ------------------------------------------------------------ harmonic timing
+
+namespace {
+
+// Share of the sound's energy in consonant harmonics of f0 (harmonics 1-32,
+// weighted as cs::harmonicWeight), measured on the audio itself.
+double soundConsonance(const Render& r, double f0) {
+  const auto from = static_cast<std::size_t>(1.5 * kSampleRate); // after the solver has settled
+  const auto count = static_cast<std::size_t>(std::floor(0.2 * f0) / f0 * kSampleRate); // whole periods
+  double weighted = 0.0, total = 0.0;
+  for (int k = 1; k <= 32; ++k) {
+    double xr = 0, xi = 0, yr = 0, yi = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+      const double a = 2.0 * kPi * k * f0 * static_cast<double>(i) / kSampleRate;
+      xr += r.x[from + i] * std::cos(a);
+      xi += r.x[from + i] * std::sin(a);
+      yr += r.y[from + i] * std::cos(a);
+      yi += r.y[from + i] * std::sin(a);
+    }
+    const double energy = xr * xr + xi * xi + yr * yr + yi * yi;
+    weighted += cs::harmonicWeight(k) * energy;
+    total += energy;
+  }
+  return weighted / total;
+}
+
+} // namespace
+
+TEST_CASE("Harmonic weights and grids", "[harmonic]") {
+  CHECK(cs::harmonicWeight(1) == 1.0);
+  CHECK(cs::harmonicWeight(8) == 1.0);
+  CHECK_THAT(cs::harmonicWeight(12), WithinAbs(0.9, 1e-12));
+  CHECK_THAT(cs::harmonicWeight(10), WithinAbs(0.7, 1e-12));
+  CHECK(cs::harmonicWeight(7) < cs::harmonicWeight(5));
+  CHECK(cs::harmonicWeight(11) < cs::harmonicWeight(7));
+  CHECK(cs::nextHarmonicGrid(1) == 1);
+  CHECK(cs::nextHarmonicGrid(5) == 6);
+  CHECK(cs::nextHarmonicGrid(7) == 8);
+  CHECK(cs::nextHarmonicGrid(9) == 12);
+  CHECK(cs::nextHarmonicGrid(13) == 16);
+  CHECK(cs::nextHarmonicGrid(90) == 96);
+
+  // Five unequal strokes on a grid of 8: whole slots each, at least one.
+  std::vector<cs::Stroke> strokes;
+  for (int i = 0; i < 5; ++i)
+    strokes.push_back({{0.1 * i, 0.0}, {0.1 * i, 0.1 + 0.15 * i}});
+  std::vector<cs::XY> table(1024);
+  cs::buildTableOnGrid(strokes, table, 8);
+  for (int slot = 0; slot < 8; ++slot) { // every slot starts on the start of a stroke, or inside one
+    const cs::XY p = table[static_cast<std::size_t>(slot) * 128];
+    bool onStroke = false;
+    for (int i = 0; i < 5; ++i)
+      onStroke = onStroke || std::abs(p.x - 0.1f * static_cast<float>(i)) < 1e-6f;
+    CHECK(onStroke);
+  }
+  CHECK(table[0].y == 0.0f);
+  // A pure circle is all fundamental: fully consonant.
+  for (std::size_t i = 0; i < table.size(); ++i)
+    table[i] = {static_cast<float>(std::cos(2 * kPi * static_cast<double>(i) / 1024)), static_cast<float>(std::sin(2 * kPi * static_cast<double>(i) / 1024))};
+  CHECK_THAT(cs::consonance(table), WithinAbs(1.0, 1e-9));
+}
+
+TEST_CASE("Harmonic timing makes the sound more consonant than even timing", "[harmonic]") {
+  const double f0 = cs::midiToHz(45);
+  auto mean = [&](auto&& render) {
+    double even = 0.0, harmonic = 0.0;
+    int better = 0;
+    const int trials = 24;
+    for (int seed = 1; seed <= trials; ++seed) {
+      const double e = soundConsonance(render(cs::Timing::Even, seed), f0);
+      const double h = soundConsonance(render(cs::Timing::Harmonic, seed), f0);
+      even += e;
+      harmonic += h;
+      better += h > e;
+    }
+    return std::array<double, 3>{even / trials, harmonic / trials, static_cast<double>(better) / trials};
+  };
+
+  const auto bubble = mean([&](cs::Timing timing, int seed) {
+    cs::BubbleParams p;
+    p.voice.timing = timing;
+    p.seed = static_cast<std::uint64_t>(seed);
+    p.boil = 0.0;
+    p.type = cs::BubbleType::Random;
+    cs::BubbleEngine voice;
+    return play(voice, p, 45, 80, 1.8, 0.0);
+  });
+  const auto orbital = mean([&](cs::Timing timing, int seed) {
+    cs::OrbitalParams p;
+    p.voice.timing = timing;
+    p.orbital = 1 + (seed - 1) % 20;
+    p.spin = 0.0;
+    cs::OrbitalEngine voice;
+    return play(voice, p, 45, 80, 1.8, 0.0);
+  });
+  const auto chamber = mean([&](cs::Timing timing, int seed) {
+    cs::ChamberParams p;
+    p.timing = timing;
+    p.seed = static_cast<std::uint64_t>(seed);
+    p.type = cs::TypeMode::Random;
+    p.wall = seed % 2 ? cs::WallMode::Shared : cs::WallMode::Off;
+    p.diffusionRate = 0.0;
+    p.drift = 0.0;
+    cs::ChamberEngine voice;
+    voice.prepare(kSampleRate);
+    voice.setParams(p);
+    Render r{std::vector<float>(86400), std::vector<float>(86400)};
+    voice.noteOn(45, 80);
+    voice.process(r.x.data(), r.y.data(), 86400);
+    return r;
+  });
+  WARN("consonant share of the sound, even -> harmonic timing (share of cases improved): bubble "
+       << bubble[0] << " -> " << bubble[1] << " (" << bubble[2] << "), orbital " << orbital[0] << " -> " << orbital[1] << " ("
+       << orbital[2] << "), chamber " << chamber[0] << " -> " << chamber[1] << " (" << chamber[2] << ")");
+  CHECK(bubble[1] >= bubble[0]);
+  CHECK(orbital[1] >= orbital[0]);
+  // A track and a wall are too few strokes to rearrange: no gain, and no loss.
+  CHECK(chamber[1] >= chamber[0] - 0.005);
 }
