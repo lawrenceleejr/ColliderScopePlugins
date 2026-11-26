@@ -80,7 +80,7 @@ void MuxEngine::triggerHit(HitType type) noexcept {
 }
 
 void MuxEngine::triggerB() noexcept {
-  if (params_.mode != MuxMode::Slot)
+  if (params_.mode != MuxMode::Slot || params_.inputs != MuxInputs::Both)
     return;
   slotIsHit_ = false;
   slotLeft_ = static_cast<int>(std::clamp(params_.slotMs, 20.0, 300.0) * 1e-3 * sampleRate_);
@@ -219,7 +219,7 @@ void MuxEngine::slot(XY a, XY b, XY& target, MuxTag& src) noexcept {
   slowEnv_ += (rb - slowEnv_) * envSlowCoef_;
   if (rearm_ > 0)
     --rearm_;
-  if (slotLeft_ <= 0 && rearm_ <= 0 && params_.sensitivity > 0.0) {
+  if (slotLeft_ <= 0 && rearm_ <= 0 && params_.sensitivity > 0.0 && params_.inputs == MuxInputs::Both) {
     const double s = std::clamp(params_.sensitivity, 0.0, 1.0);
     const double floorLevel = 0.2 - 0.18 * s; // 0.2 at the least sensitive, 0.02 at the most
     const double ratio = 6.0 - 4.5 * s;       // 6x .. 1.5x the recent level
@@ -258,22 +258,31 @@ void MuxEngine::process(const float* ax, const float* ay, const float* bx, const
   const bool needPitch =
       params_.mode == MuxMode::CycleLock || (params_.mode == MuxMode::Interleave && params_.slice <= 0);
   const auto zLevel = static_cast<float>(params_.zLevel);
+  // One input alone: no B connected, or asked for.
+  const bool hasB = bx != nullptr && by != nullptr;
+  const bool bOnly = params_.inputs == MuxInputs::BOnly && hasB;
+  const bool single = bOnly || params_.inputs == MuxInputs::AOnly || !hasB;
+  const bool shapeOut = params_.outScaleX != 1.0 || params_.outScaleY != 1.0 || params_.outOffsetX != 0.0 ||
+                        params_.outOffsetY != 0.0;
+  const auto sx = static_cast<float>(params_.outScaleX), sy = static_cast<float>(params_.outScaleY);
+  const auto ox = static_cast<float>(params_.outOffsetX), oy = static_cast<float>(params_.outOffsetY);
   for (int i = 0; i < n; ++i) {
-    const float rawBx = bx ? bx[i] : 0.0f, rawBy = by ? by[i] : 0.0f;
-    const XY a = a_.place(ax[i], ay[i]);
-    const XY b = b_.place(rawBx, rawBy);
+    const float rawBx = hasB ? bx[i] : 0.0f, rawBy = hasB ? by[i] : 0.0f;
+    // With B alone, B takes A's place throughout.
+    const XY a = bOnly ? b_.place(rawBx, rawBy) : a_.place(ax[i], ay[i]);
+    const XY b = single ? XY{} : b_.place(rawBx, rawBy);
     peakA_ = std::max(radius(a), peakA_ * peakDecay_);
     // How fast each source draws, in distance per sample.
     a_.speed += (dist(a, a_.last) - a_.speed) * 0.01;
     b_.speed += (dist(b, b_.last) - b_.speed) * 0.01;
     a_.last = a;
     b_.last = b;
-    if (needPitch) {
+    if (needPitch && !single) {
       trackA_.push(0.5f * (ax[i] + ay[i]));
       if (params_.mode == MuxMode::CycleLock)
         trackB_.push(0.5f * (rawBx + rawBy));
     }
-    if (params_.mode == MuxMode::CycleLock) {
+    if (params_.mode == MuxMode::CycleLock && !single) {
       const auto w = static_cast<std::size_t>(written_) & (kRing - 1);
       ringA_[w] = a;
       ringB_[w] = b;
@@ -282,17 +291,23 @@ void MuxEngine::process(const float* ax, const float* ay, const float* bx, const
 
     XY target = a;
     MuxTag src = MuxTag::A;
-    switch (params_.mode) {
-    case MuxMode::Interleave:
-      interleave(a, b, target, src);
-      break;
-    case MuxMode::CycleLock:
-      if (!cycleLock(target, src))
+    if (single && params_.mode != MuxMode::Slot) {
+      // Nothing to alternate with: the one picture keeps the beam.
+      lockActive_ = false;
+      latency_ = 0;
+    } else {
+      switch (params_.mode) {
+      case MuxMode::Interleave:
         interleave(a, b, target, src);
-      break;
-    case MuxMode::Slot:
-      slot(a, b, target, src);
-      break;
+        break;
+      case MuxMode::CycleLock:
+        if (!cycleLock(target, src))
+          interleave(a, b, target, src);
+        break;
+      case MuxMode::Slot:
+        slot(a, b, target, src); // with one input, slots are for the built-in hits
+        break;
+      }
     }
 
     // Jumps are drawn too: the beam travels to the new picture in
@@ -315,8 +330,8 @@ void MuxEngine::process(const float* ax, const float* ay, const float* bx, const
       zHold_ = 2;
     }
     lastOut_ = out;
-    x[i] = out.x;
-    y[i] = out.y;
+    x[i] = shapeOut ? out.x * sx + ox : out.x;
+    y[i] = shapeOut ? out.y * sy + oy : out.y;
     if (z) {
       z[i] = zHold_ > 0 ? zLevel : 0.0f;
     }

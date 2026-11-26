@@ -135,14 +135,16 @@ whole beam in turn. A is the track the plugin sits on; B arrives on the sidechai
 
 | Group | Parameter | What it does |
 | --- | --- | --- |
-| Mux | Slice | Interleave: samples per slice, 8 to 4096. Auto uses one period of A when A has a pitch, otherwise 512. |
+| Mux | Inputs | A + B, or one input alone. Alone, the picture keeps the whole beam, and placement, the output controls and (in Slot mode) the built-in drum hits still apply. With nothing on the sidechain, CS Mux behaves as A only. |
+| | Slice | Interleave: samples per slice, 8 to 4096. Auto uses one period of A when A has a pitch, otherwise 512. |
 | | Balance | Trades time, and so brightness, between A and B. |
 | | Switch point | Fixed, or Closest: each switch moves, within 10 % of the slice, to where the two traces are near each other, so jump lines are shorter. |
 | | Jump weight | How long the beam takes to travel between pictures, relative to drawing the same distance. Lower is fainter jump lines and a sharper switching sound. |
 | Slot | Slot length | Longest slot for B, 20 to 300 ms. A slot ends early once B falls below 12 % of its peak. |
 | | B trigger | How easily a transient on B opens a slot. 0 turns it off, leaving MIDI only. |
 | Place A, Place B | Offset, scale, rotation | Put the pictures side by side or one inside the other. |
-| Output | Z-out level | Level of the blanking pulse on the Z output during jumps. Negative flips its polarity. |
+| Output | X scale, X offset, Y scale, Y offset | Overall size and position of each output channel, applied last. A negative scale mirrors the picture. Offsets need DC-coupled outputs to hold. |
+| | Z-out level | Level of the blanking pulse on the Z output during jumps. Negative flips its polarity. |
 | | Persistence | How long the built-in display glows. |
 
 **MIDI in Slot mode.** Note 36 (C1) plays the built-in kick, a spiral collapsing from A's outer edge.

@@ -30,6 +30,7 @@ constexpr int kMaxChunk = 4096;
 juce::AudioProcessorValueTreeState::ParameterLayout MuxProcessor::createLayout() {
   juce::AudioProcessorValueTreeState::ParameterLayout layout;
   layout.add(std::make_unique<Choice>(id("mode"), "Mode", juce::StringArray{"Interleave", "Cycle-lock", "Slot"}, 0));
+  layout.add(std::make_unique<Choice>(id("inputs"), "Inputs", juce::StringArray{"A + B", "A only", "B only"}, 0));
   Range slice(kSliceAuto, 4096.0f, 1.0f);
   slice.setSkewForCentre(256.0f);
   layout.add(std::make_unique<Float>(
@@ -65,6 +66,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout MuxProcessor::createLayout()
     add("Rotation", "rotation", Range(-180.0f, 180.0f, 1.0f), 0.0f, "deg", 0);
   }
 
+  layout.add(number("outScaleX", "X scale", Range(-2.0f, 2.0f, 0.01f), 1.0f, "", 2));
+  layout.add(number("outOffsetX", "X offset", Range(-1.0f, 1.0f, 0.01f), 0.0f, "", 2));
+  layout.add(number("outScaleY", "Y scale", Range(-2.0f, 2.0f, 0.01f), 1.0f, "", 2));
+  layout.add(number("outOffsetY", "Y offset", Range(-1.0f, 1.0f, 0.01f), 0.0f, "", 2));
   layout.add(number("zLevel", "Z-out level", Range(-1.0f, 1.0f, 0.01f), 1.0f, "", 2));
   layout.add(number("scopeDecay", "Persistence", Range(0.3f, 0.9f, 0.01f), 0.55f, "", 2));
   return layout;
@@ -79,6 +84,11 @@ MuxProcessor::MuxProcessor()
       state_(*this, nullptr, "CSMux", createLayout()) {
   auto raw = [this](const char* paramId) { return state_.getRawParameterValue(paramId); };
   mode_ = raw("mode");
+  inputs_ = raw("inputs");
+  outScaleX_ = raw("outScaleX");
+  outOffsetX_ = raw("outOffsetX");
+  outScaleY_ = raw("outScaleY");
+  outOffsetY_ = raw("outOffsetY");
   slice_ = raw("slice");
   balance_ = raw("balance");
   switchPoint_ = raw("switchPoint");
@@ -131,6 +141,11 @@ cs::MuxParams MuxProcessor::readParams() const noexcept {
   p.a = {ax_->load(), ay_->load(), aScale_->load(), aRotation_->load()};
   p.b = {bx_->load(), by_->load(), bScale_->load(), bRotation_->load()};
   p.zLevel = zLevel_->load();
+  p.inputs = static_cast<cs::MuxInputs>(juce::roundToInt(inputs_->load()));
+  p.outScaleX = outScaleX_->load();
+  p.outOffsetX = outOffsetX_->load();
+  p.outScaleY = outScaleY_->load();
+  p.outOffsetY = outOffsetY_->load();
   return p;
 }
 
@@ -208,11 +223,11 @@ void MuxProcessor::timerCallback() {
 
 juce::AudioProcessorEditor* MuxProcessor::createEditor() {
   return new cs::Editor(*this, state_, scopeFeed_, "scopeDecay",
-                        {{"Mux", {"mode", "slice", "balance", "switchPoint", "jumpWeight"}},
+                        {{"Mux", {"mode", "inputs", "slice", "balance", "switchPoint", "jumpWeight"}},
                          {"Slot", {"slotMs", "sensitivity"}},
                          {"Place A", {"aX", "aY", "aScale", "aRotation"}},
                          {"Place B", {"bX", "bY", "bScale", "bRotation"}},
-                         {"Output", {"zLevel", "scopeDecay"}}});
+                         {"Output", {"outScaleX", "outOffsetX", "outScaleY", "outOffsetY", "zLevel", "scopeDecay"}}});
 }
 
 void MuxProcessor::getStateInformation(juce::MemoryBlock& destination) {

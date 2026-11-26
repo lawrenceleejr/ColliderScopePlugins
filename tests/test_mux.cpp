@@ -413,6 +413,95 @@ TEST_CASE("Cycle-lock falls back to Interleave when an input has no pitch", "[mu
   }
 }
 
+TEST_CASE("One input: the picture keeps the whole beam, in every mode", "[mux]") {
+  const std::size_t n = 24000;
+  const Signal a = circle(55.0, 0.8, n), b = square(220.0, 0.3, n);
+  const auto mode = GENERATE(cs::MuxMode::Interleave, cs::MuxMode::CycleLock, cs::MuxMode::Slot);
+  cs::MuxParams p;
+  p.mode = mode;
+  CAPTURE(static_cast<int>(mode));
+
+  SECTION("A only: the output is A, bit for bit") {
+    p.inputs = cs::MuxInputs::AOnly;
+    cs::MuxEngine engine;
+    engine.prepare(kSampleRate);
+    engine.setParams(p);
+    engine.triggerB(); // nothing to give the beam to
+    const Output o = run(engine, a, b);
+    for (std::size_t i = 0; i < n; ++i) {
+      REQUIRE(o.tag[i] == cs::MuxTag::A);
+      REQUIRE(o.x[i] == a.x[i]);
+      REQUIRE(o.y[i] == a.y[i]);
+    }
+    CHECK(engine.latencySamples() == 0);
+  }
+  SECTION("B only: the output is B") {
+    p.inputs = cs::MuxInputs::BOnly;
+    cs::MuxEngine engine;
+    engine.prepare(kSampleRate);
+    engine.setParams(p);
+    const Output o = run(engine, a, b);
+    for (std::size_t i = 0; i < n; ++i) {
+      REQUIRE(o.x[i] == b.x[i]);
+      REQUIRE(o.y[i] == b.y[i]);
+    }
+  }
+  SECTION("no B connected is the same as A only") {
+    cs::MuxEngine engine;
+    engine.prepare(kSampleRate);
+    engine.setParams(p);
+    std::vector<float> x(n), y(n);
+    engine.process(a.x.data(), a.y.data(), nullptr, nullptr, x.data(), y.data(), nullptr, nullptr, static_cast<int>(n));
+    for (std::size_t i = 0; i < n; ++i) {
+      REQUIRE(x[i] == a.x[i]);
+      REQUIRE(y[i] == a.y[i]);
+    }
+  }
+}
+
+TEST_CASE("One input in Slot mode: the built-in hits still take their slots", "[mux]") {
+  const std::size_t n = 24000;
+  const Signal a = circle(55.0, 0.8, n), b = silence(n);
+  cs::MuxParams p;
+  p.mode = cs::MuxMode::Slot;
+  p.inputs = cs::MuxInputs::AOnly;
+  cs::MuxEngine engine;
+  engine.prepare(kSampleRate);
+  engine.setParams(p);
+  Output o = run(engine, a, b, 0, 12000);
+  engine.triggerHit(cs::HitType::Snare);
+  o = run(engine, a, b, 12000, n);
+  CHECK(o.tag[480] == cs::MuxTag::B);
+  CHECK(o.tag[11000] == cs::MuxTag::A);
+  CHECK(o.x[11000] == a.x[12000 + 11000]);
+}
+
+TEST_CASE("Output scale and offset apply to each channel after everything else", "[mux]") {
+  const std::size_t n = 12000;
+  const Signal a = circle(55.0, 0.8, n), b = square(220.0, 0.3, n);
+  cs::MuxParams p;
+  p.slice = 256;
+  p.jumpWeight = 0.0;
+  p.outScaleX = 0.5;
+  p.outOffsetX = 0.25;
+  p.outScaleY = -1.0; // flips the picture top to bottom
+  p.outOffsetY = -0.1;
+  cs::MuxEngine shaped, plain;
+  shaped.prepare(kSampleRate);
+  plain.prepare(kSampleRate);
+  shaped.setParams(p);
+  cs::MuxParams q = p;
+  q.outScaleX = q.outScaleY = 1.0;
+  q.outOffsetX = q.outOffsetY = 0.0;
+  plain.setParams(q);
+  const Output s = run(shaped, a, b), r = run(plain, a, b);
+  for (std::size_t i = 0; i < n; ++i) {
+    REQUIRE(s.tag[i] == r.tag[i]);
+    REQUIRE_THAT(s.x[i], WithinAbs(0.5 * r.x[i] + 0.25, 1e-6));
+    REQUIRE_THAT(s.y[i], WithinAbs(-r.y[i] - 0.1, 1e-6));
+  }
+}
+
 TEST_CASE("Placement: offset, scale and rotation put the pictures side by side", "[mux]") {
   const std::size_t n = 24000;
   const Signal a = circle(55.0, 0.8, n), b = circle(220.0, 0.8, n);

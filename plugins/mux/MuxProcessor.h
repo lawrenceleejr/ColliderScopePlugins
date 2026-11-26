@@ -55,7 +55,7 @@ private:
   int pendingLatency_ = 0;
 
   std::atomic<float>*mode_, *slice_, *balance_, *switchPoint_, *jumpWeight_, *slotMs_, *sensitivity_, *ax_, *ay_,
-      *aScale_, *aRotation_, *bx_, *by_, *bScale_, *bRotation_, *zLevel_;
+      *aScale_, *aRotation_, *bx_, *by_, *bScale_, *bRotation_, *zLevel_, *inputs_, *outScaleX_, *outOffsetX_, *outScaleY_, *outOffsetY_;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MuxProcessor)
 };

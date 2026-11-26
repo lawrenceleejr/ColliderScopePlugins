@@ -26,6 +26,9 @@ namespace cs {
 
 enum class MuxMode { Interleave, CycleLock, Slot };
 enum class SwitchPoint { Fixed, Closest };
+// Both: A and B share the beam. AOnly / BOnly: one input has it to itself;
+// placement, the output controls and (in Slot mode) the built-in hits still apply.
+enum class MuxInputs { Both, AOnly, BOnly };
 
 // Where a source's picture sits: p' = rotate(p * scale) + offset.
 struct Placement {
@@ -44,6 +47,10 @@ struct MuxParams {
   double sensitivity = 0.5;     // Slot: transient trigger on B, 0 = off
   Placement a, b;
   double zLevel = 1.0;          // Z-out level during jumps, -1..1
+  MuxInputs inputs = MuxInputs::Both;
+  // Overall scale and offset of each output channel, after everything else.
+  double outScaleX = 1.0, outOffsetX = 0.0;
+  double outScaleY = 1.0, outOffsetY = 0.0;
 };
 
 // What each output sample is, for tests and the Z output.
