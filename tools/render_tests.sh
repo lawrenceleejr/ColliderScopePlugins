@@ -20,6 +20,15 @@ mkdir -p "$out"
 # Polyphony: A2, A3, E4 are overtones 1, 2, 3 of A2; then a close triad over the A1 drone.
 "$csrender" notes --voices 4 --notes 45:0:1.2:120,57:0:1.2:80,64:0:1.2:40 --wall off --seed 4 --at 0.6 --out "$out/chamber_poly_overtones"
 "$csrender" notes --voices 4 --notes 57:0:1.2:80,61:0:1.2:80,64:0:1.2:40 --wall drone --seed 4 --at 0.6 --out "$out/chamber_poly_drone_triad"
+# CS Bubble: one event of each kind, 0.9 s into the note, and a pair when it is young (dots).
+for event in electron pair decay beam; do
+  "$csrender" notes --instrument bubble --type "$event" --notes 57:0:1.2:80 --seed 5 --at 0.9 --out "$out/bubble_$event"
+done
+"$csrender" notes --instrument bubble --type pair --notes 57:0:0.3:80 --seed 5 --at 0.12 --out "$out/bubble_pair_young"
+# CS Orbital: one orbital of each kind.
+for orbital in 1s 2s 2pz 2px 3dz2 3dxz 4fz3 4fxz2; do
+  "$csrender" notes --instrument orbital --orbital "$orbital" --notes 57:0:1.2:80 --at 0.6 --out "$out/orbital_$orbital"
+done
 # Drum hits, each in its own slot.
 "$csrender" hit kick  --out "$out/hit_kick"
 "$csrender" hit snare --out "$out/hit_snare"

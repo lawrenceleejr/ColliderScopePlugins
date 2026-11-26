@@ -1,7 +1,8 @@
 # ColliderScope Plugins: manual
 
-Two plugins for oscilloscope music. In XY mode the left channel is X and the right channel is Y,
-so the sound is the picture: every setting below changes both.
+Four plugins for oscilloscope music: three instruments (CS Chamber, CS Bubble, CS Orbital) and one
+effect (CS Mux). In XY mode the left channel is X and the right channel is Y, so the sound is the
+picture: every setting below changes both.
 
 ## Install
 
@@ -10,14 +11,14 @@ and unzip it.
 
 | Plugin file | Goes in |
 | --- | --- |
-| `CS Chamber.vst3`, `CS Mux.vst3` | `~/Library/Audio/Plug-Ins/VST3` |
-| `CS Chamber.component`, `CS Mux.component` | `~/Library/Audio/Plug-Ins/Components` |
+| the four `.vst3` bundles | `~/Library/Audio/Plug-Ins/VST3` |
+| the four `.component` bundles | `~/Library/Audio/Plug-Ins/Components` |
 
 The builds are unsigned, so clear the quarantine flag once after copying, then rescan in your DAW:
 
 ```sh
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/CS\ Chamber.vst3
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/CS\ Mux.vst3
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/CS\ *.vst3
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/CS\ *.component
 ```
 
 Universal binary (Apple Silicon and Intel), macOS 12 or later.
@@ -83,6 +84,44 @@ rate, the chord's fundamental, and every note is snapped to the nearest overtone
 A track lives about two seconds (alpha 2.0 s, muon 2.4 s, electron 1.8 s). With the wall on, the wall
 carries on alone after that. With the wall off, a note held longer goes silent.
 
+## CS Bubble (instrument)
+
+A bubble chamber. Each note is an event: a charged particle crosses a magnetic field, losing energy as
+it goes, so its track curls into a spiral. The track is a row of bubbles. The beam dwells on a young
+bubble, a bright dot, and circles an older one, so a note starts as a dotted line with a stepped,
+buzzy tone and fizzes more as the bubbles swell. Monophonic, with the same voice controls as CS Chamber.
+
+| Group | Parameter | What it does |
+| --- | --- | --- |
+| Event | Event | Auto picks by velocity: up to 40 an electron (one spiral), 41 to 80 a pair (an electron and a positron leaving one point and curling opposite ways), 81 to 110 a decay (a track that kinks and curls away tighter), above 110 a beam particle (nearly straight). Or fix the event, or Random. |
+| | Seed mode | Random: a new event every note. Per key: the same key always draws the same event. Global: one event for everything. |
+| | Field | Strength of the magnetic field: higher curls the tracks tighter. It can be moved while a note sounds. |
+| | Form time | How long the track takes to appear along its length. |
+| Bubbles | Bubbles | How many bubbles the picture has. Fewer is a coarser, buzzier tone. |
+| | Bubble growth | How fast the bubbles swell while the note is held. |
+| | Bubble size | The size at which they stop. |
+| | Boil | How much the bubbles shiver: the hiss. |
+
+Presets: Spiral bass, Pair pluck, Fizz. A track lasts as long as the key is held.
+
+## CS Orbital (instrument)
+
+Surfaces. Each note draws a hydrogen orbital as a wireframe of its isosurface, the surface on which
+the wavefunction has one size, spinning about the orbital's axis. Each radial lobe of the orbital is
+one shell: 1s is a sphere, 2s a sphere within a sphere, 2p two lobes, 3d lobes and a ring or a
+four-leaf clover, 4f more lobes still. Monophonic, with the same voice controls as CS Chamber.
+
+| Group | Parameter | What it does |
+| --- | --- | --- |
+| Surface | Orbital | Auto picks by velocity: up to 40 an s orbital, 41 to 80 p, 81 to 110 d, above 110 f, and the key turns it (which m). Or choose one of the twenty from 1s to 4f. |
+| | Iso level | Where the surface sits, as a fraction of the lobe's peak. Lower is a fatter surface that reaches closer to the nodes. |
+| | Wires | How many wires are drawn around each shell. More is a denser picture and a brighter tone. |
+| | Bloom time | The surface grows out of the lobe's core over this time at the start of a note. |
+| View | Spin | Turning rate about the orbital's axis. Negative turns the other way. |
+| | Tilt | How far the axis leans toward you. At 0 you look from the side, at 90 down the axis. |
+
+Presets: s sine, p lead, d pad, f bell. The wireframe is see-through: wires on the far side show too.
+
 ## CS Mux (effect)
 
 Shows two pictures on one scope. Adding two XY signals shears both pictures; CS Mux gives each the
@@ -130,6 +169,7 @@ Use the VST3 versions: Live sends MIDI to VST3 effects but not to Audio Unit eff
 
 - The built-in display gathers light 60 times a second and redraws 30 times a second.
 
+- CS Bubble and CS Orbital are monophonic.
 - Played live, a note starts when its first picture arrives from a background thread, up to a
   millisecond or two after the key. Offline bounces are sample-exact.
 - Cycle-lock changes its reported latency when A changes pitch. Some hosts pause briefly to re-plan.

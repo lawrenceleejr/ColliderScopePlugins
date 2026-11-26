@@ -60,7 +60,7 @@ jobs:
           mkdir -p dist
           find build/plugins \( -name '*.vst3' -o -name '*.component' \) -maxdepth 6 -prune -exec cp -R {} dist/ \;
           ls -la dist
-          for name in "CS Chamber" "CS Mux"; do
+          for name in "CS Chamber" "CS Mux" "CS Bubble" "CS Orbital"; do
             test -d "dist/$name.vst3"
             test -d "dist/$name.component"
             for bin in "dist/$name.vst3/Contents/MacOS/$name" "dist/$name.component/Contents/MacOS/$name"; do
@@ -75,7 +75,7 @@ jobs:
           curl -fsSL -o pluginval.zip \
             "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_macOS.zip"
           unzip -q pluginval.zip
-          for name in "CS Chamber" "CS Mux"; do
+          for name in "CS Chamber" "CS Mux" "CS Bubble" "CS Orbital"; do
             pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --validate-in-process \
               --output-dir pluginval-logs --validate "dist/$name.vst3"
           done
@@ -86,6 +86,8 @@ jobs:
           killall -9 AudioComponentRegistrar || true
           auval -v aumu Chmb Clsc
           auval -v aumf CMux Clsc
+          auval -v aumu Bubl Clsc
+          auval -v aumu Orbt Clsc
 
       - name: UI snapshots
         run: |
@@ -96,11 +98,14 @@ jobs:
           "$root/chamber/cschamber_uisnap_artefacts/Release/cschamber_uisnap" cs_chamber_drone.png wallMode=Drone type=Electron
           "$root/mux/csmux_uisnap_artefacts/Release/csmux_uisnap" cs_mux_interleave.png
           "$root/mux/csmux_uisnap_artefacts/Release/csmux_uisnap" cs_mux_cycle_lock.png mode=Cycle-lock
+          "$root/bubble/csbubble_uisnap_artefacts/Release/csbubble_uisnap" cs_bubble.png
+          "$root/orbital/csorbital_uisnap_artefacts/Release/csorbital_uisnap" cs_orbital_3dz2.png orbital=3dz2
+          "$root/orbital/csorbital_uisnap_artefacts/Release/csorbital_uisnap" cs_orbital_4f.png orbital=4fxz2
 
       - name: Package
         run: |
           cd dist
-          for name in "CS Chamber" "CS Mux"; do
+          for name in "CS Chamber" "CS Mux" "CS Bubble" "CS Orbital"; do
             ditto -c -k --keepParent "$name.vst3" "${name// /-}-macOS-universal-vst3.zip"
             ditto -c -k --keepParent "$name.component" "${name// /-}-macOS-universal-au.zip"
           done
