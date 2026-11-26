@@ -21,7 +21,7 @@ const char* kUsage =
     "      Play a note list through the CS Chamber voice.\n"
     "      --type auto|alpha|muon|electron|random   --seed-mode random|key|global   --seed N\n"
     "      --wall off|shared|drone   --root NOTE   --share P\n"
-    "      --diffusion R   --drift R   --condense MS   --size S   --attack MS   --release MS   --gain DB\n"
+    "      --diffusion R   --drift R   --condense MS   --size S   --attack MS   --release MS   --glide MS   --gain DB\n"
     "  csrender hit kick|snare|crash --out PREFIX [--radius R] [--seed N]\n"
     "      Render one drum hit.\n"
     "  csrender view IN.wav --out PREFIX\n"
@@ -106,6 +106,7 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
   p.condenseMs = args.num("condense", p.condenseMs);
   p.size = args.num("size", p.size);
   p.attackMs = args.num("attack", p.attackMs);
+  p.glideMs = args.num("glide", p.glideMs);
   p.releaseMs = args.num("release", p.releaseMs);
   p.gainDb = args.num("gain", p.gainDb);
 
@@ -131,9 +132,9 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
     return a.at != b.at ? a.at < b.at : (!a.on && b.on); // offs before ons at the same sample
   });
 
-  cs::ChamberVoice voice;
-  voice.setParams(p);
+  cs::ChamberEngine voice; // synchronous: sample-exact and repeatable
   voice.prepare(sampleRate);
+  voice.setParams(p);
   csio::Audio audio;
   audio.sampleRate = sampleRate;
   audio.x.assign(total, 0.0f);
@@ -142,7 +143,7 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
   auto advance = [&](std::size_t to) {
     to = std::min(to, total);
     if (to > pos)
-      voice.render(audio.x.data() + pos, audio.y.data() + pos, static_cast<int>(to - pos));
+      voice.process(audio.x.data() + pos, audio.y.data() + pos, static_cast<int>(to - pos));
     pos = std::max(pos, to);
   };
   for (const Event& e : events) {
@@ -151,7 +152,7 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
       voice.noteOn(notes[e.index].note, notes[e.index].velocity);
       current = e.index;
     } else if (current == e.index) {
-      voice.noteOff();
+      voice.noteOff(notes[e.index].note);
     }
   }
   advance(total);

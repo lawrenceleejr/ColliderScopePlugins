@@ -4,9 +4,10 @@
 // with CS Mux in Phase 3.
 #pragma once
 
-#include "cscore/chamber_voice.h"
+#include "cscore/chamber_engine.h"
 #include "cscore/envelope.h"
 #include "cscore/hits.h"
+#include "cscore/lockfree.h"
 #include "cscore/oscillator.h"
 #include "cscore/path.h"
 #include "cscore/pitch.h"

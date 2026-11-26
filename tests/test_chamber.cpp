@@ -21,17 +21,17 @@ struct Render {
 };
 
 Render play(const cs::ChamberParams& params, int note, int velocity, double held, double tail) {
-  cs::ChamberVoice voice;
-  voice.setParams(params);
+  cs::ChamberEngine voice;
   voice.prepare(kSampleRate);
+  voice.setParams(params);
   const auto on = static_cast<std::size_t>(held * kSampleRate), off = static_cast<std::size_t>(tail * kSampleRate);
   Render r;
   r.x.resize(on + off);
   r.y.resize(on + off);
   voice.noteOn(note, velocity);
-  voice.render(r.x.data(), r.y.data(), static_cast<int>(on));
-  voice.noteOff();
-  voice.render(r.x.data() + on, r.y.data() + on, static_cast<int>(off));
+  voice.process(r.x.data(), r.y.data(), static_cast<int>(on));
+  voice.noteOff(note);
+  voice.process(r.x.data() + on, r.y.data() + on, static_cast<int>(off));
   return r;
 }
 
@@ -65,9 +65,9 @@ TEST_CASE("Pitch: Drone holds the root and snaps the note to an overtone", "[cha
   cs::ChamberParams p;
   p.wall = cs::WallMode::Drone;
   p.wallRoot = 33;
-  cs::ChamberVoice voice;
-  voice.setParams(p);
+  cs::ChamberEngine voice;
   voice.prepare(kSampleRate);
+  voice.setParams(p);
   voice.noteOn(57, 80); // A3 = 4 x A1
   CHECK_THAT(voice.periodHz(), WithinAbs(55.0, 1e-9));
   CHECK(voice.harmonic() == 4);
@@ -134,16 +134,16 @@ TEST_CASE("Hard rest: below -80 dBFS within 0.5 ms of note-off", "[chamber][acce
   cs::ChamberParams p;
   p.wall = wall;
   p.releaseMs = 0.0;
-  cs::ChamberVoice voice;
-  voice.setParams(p);
+  cs::ChamberEngine voice;
   voice.prepare(sampleRate);
+  voice.setParams(p);
   const int held = static_cast<int>(0.3 * sampleRate), tail = static_cast<int>(0.1 * sampleRate);
   std::vector<float> x(static_cast<std::size_t>(held + tail)), y(x.size());
   voice.noteOn(57, 80);
-  voice.render(x.data(), y.data(), held);
+  voice.process(x.data(), y.data(), held);
   CHECK(std::abs(x[static_cast<std::size_t>(held) - 1]) + std::abs(y[static_cast<std::size_t>(held) - 1]) > 0.01);
-  voice.noteOff();
-  voice.render(x.data() + held, y.data() + held, tail);
+  voice.noteOff(57);
+  voice.process(x.data() + held, y.data() + held, tail);
 
   const float limit = 1e-4f; // -80 dBFS
   const auto deadline = static_cast<std::size_t>(held) + static_cast<std::size_t>(std::floor(0.0005 * sampleRate));
@@ -172,9 +172,9 @@ TEST_CASE("Seed modes", "[chamber]") {
     cs::ChamberParams p;
     p.seedMode = mode;
     p.type = cs::TypeMode::Electron;
-    cs::ChamberVoice voice;
-    voice.setParams(p);
+    cs::ChamberEngine voice;
     voice.prepare(kSampleRate);
+    voice.setParams(p);
     for (int n : notes)
       voice.noteOn(n, 80);
     return voice.track().points;
