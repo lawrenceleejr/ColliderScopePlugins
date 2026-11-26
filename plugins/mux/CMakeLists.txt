@@ -23,3 +23,4 @@ target_sources(CSMux PRIVATE
   MuxEditor.cpp)
 
 cs_configure_plugin(CSMux)
+cs_add_uisnap(csmux_uisnap CSMux)

@@ -25,3 +25,11 @@ function(cs_configure_plugin target)
       juce::juce_recommended_lto_flags
       juce::juce_recommended_warning_flags)
 endfunction()
+
+# A console tool that saves a picture of the plugin's editor (tools/uisnap).
+function(cs_add_uisnap target plugin)
+  juce_add_console_app(${target})
+  target_sources(${target} PRIVATE ${PROJECT_SOURCE_DIR}/tools/uisnap/main.cpp)
+  target_compile_definitions(${target} PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+  target_link_libraries(${target} PRIVATE ${plugin} juce::juce_audio_utils)
+endfunction()

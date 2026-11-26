@@ -21,3 +21,4 @@ target_sources(CSChamber PRIVATE
   ChamberEditor.cpp)
 
 cs_configure_plugin(CSChamber)
+cs_add_uisnap(cschamber_uisnap CSChamber)
