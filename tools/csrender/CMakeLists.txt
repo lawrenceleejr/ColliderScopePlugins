@@ -1,2 +1,5 @@
-add_executable(csrender main.cpp)
+add_executable(csrender main.cpp io.cpp)
 target_link_libraries(csrender PRIVATE cscore)
+if(NOT MSVC)
+  target_compile_options(csrender PRIVATE -Wall -Wextra -Wpedantic)
+endif()

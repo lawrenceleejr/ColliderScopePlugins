@@ -1,6 +1,11 @@
 # cscore: the shared DSP core. No JUCE, no platform code.
 add_library(cscore STATIC
-  src/cscore.cpp)
+  src/chamber_voice.cpp
+  src/cscore.cpp
+  src/hits.cpp
+  src/path.cpp
+  src/scope_view.cpp
+  src/tracks.cpp)
 target_include_directories(cscore PUBLIC include)
 target_compile_features(cscore PUBLIC cxx_std_20)
 target_compile_definitions(cscore PRIVATE CSCORE_VERSION="${PROJECT_VERSION}")

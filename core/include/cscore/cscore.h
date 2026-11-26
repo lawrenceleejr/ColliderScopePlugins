@@ -1,9 +1,18 @@
 // cscore: shared core of the ColliderScope plugin suite.
-// Path engine, oscillator, gate, generators, hits, YIN, serializer and scope
-// view arrive in Phase 1 onward; Phase 0 carries only what the skeleton needs.
+// Phase 1: path engine, oscillator, gate, track generators and ageing, hits,
+// the CS Chamber voice and the scope view. YIN and the serializer arrive
+// with CS Mux in Phase 3.
 #pragma once
 
+#include "cscore/chamber_voice.h"
+#include "cscore/envelope.h"
+#include "cscore/hits.h"
+#include "cscore/oscillator.h"
+#include "cscore/path.h"
 #include "cscore/pitch.h"
+#include "cscore/rng.h"
+#include "cscore/scope_view.h"
+#include "cscore/tracks.h"
 
 namespace cs {
 
