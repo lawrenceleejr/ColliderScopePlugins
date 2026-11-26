@@ -1,6 +1,6 @@
 // The built-in phosphor scope: a square XY display of the plugin's own
 // output. The audio thread pushes samples into a lock-free ring and never
-// waits; this component drains it at 60 fps.
+// waits; this component drains it at 60 fps and redraws at 30 fps.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -74,6 +74,10 @@ private:
       }
       view_.addSamples(x_.data(), y_.data(), static_cast<int>(n));
     }
+    // Light is gathered at 60 fps; the picture is tone-mapped and redrawn at
+    // 30 fps, the rate of the ColliderScope video renderer, to halve the cost.
+    if ((tick_++ & 1) != 0)
+      return;
     view_.renderARGB(pixels_);
     {
       juce::Image::BitmapData data(image_, juce::Image::BitmapData::writeOnly);
@@ -91,6 +95,7 @@ private:
   std::vector<float> x_, y_;
   std::vector<std::uint32_t> pixels_;
   double last_ = 0.0;
+  unsigned tick_ = 0;
 };
 
 } // namespace cs

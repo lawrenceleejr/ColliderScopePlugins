@@ -208,7 +208,9 @@ TEST_CASE("CPU: CS Mux under 5 % of one core at 48 kHz, 128-sample buffer", "[re
   }
 }
 
-TEST_CASE("Scope display cost per frame", "[realtime]") {
+TEST_CASE("Scope display cost", "[realtime]") {
+  // What the plugin's display does each second: gather light 60 times,
+  // tone-map and redraw 30 times. Best of five runs, as shared CI machines are noisy.
   using Clock = std::chrono::steady_clock;
   cs::ChamberEngine engine;
   engine.prepare(kSampleRate);
@@ -217,15 +219,18 @@ TEST_CASE("Scope display cost per frame", "[realtime]") {
   cs::ScopeView view(512);
   std::vector<std::uint32_t> argb;
   view.renderARGB(argb); // first frame sizes the scratch buffers
-  const int frames = 120;
-  const auto start = Clock::now();
-  for (int f = 0; f < frames; ++f) {
-    engine.process(x.data(), y.data(), 800);
-    view.beginFrame(1.0 / 60.0);
-    view.addSamples(x.data(), y.data(), 800);
-    view.renderARGB(argb);
+  double best = 1e9;
+  for (int run = 0; run < 5; ++run) {
+    const auto start = Clock::now();
+    for (int tick = 0; tick < 60; ++tick) {
+      engine.process(x.data(), y.data(), 800);
+      view.beginFrame(1.0 / 60.0);
+      view.addSamples(x.data(), y.data(), 800);
+      if (tick % 2 == 0)
+        view.renderARGB(argb);
+    }
+    best = std::min(best, std::chrono::duration<double>(Clock::now() - start).count());
   }
-  const double ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count() / frames;
-  WARN("scope frame: " << ms << " ms, " << ms / (1000.0 / 60.0) * 100.0 << " % of a core");
-  CHECK(ms < 16.0); // must at least keep up with 60 fps
+  WARN("scope display: " << best * 100.0 << " % of a core (" << best * 1000.0 / 30.0 << " ms per redraw)");
+  CHECK(best < 0.5);
 }

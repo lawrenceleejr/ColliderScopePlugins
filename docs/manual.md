@@ -107,6 +107,8 @@ Use the VST3 versions: Live sends MIDI to VST3 effects but not to Audio Unit eff
 
 ## Known limits
 
+- The built-in display gathers light 60 times a second and redraws 30 times a second.
+
 - Played live, a note starts when its first picture arrives from a background thread, up to a
   millisecond or two after the key. Offline bounces are sample-exact.
 - Cycle-lock changes its reported latency when A changes pitch. Some hosts pause briefly to re-plan.
