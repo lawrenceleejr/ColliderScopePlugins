@@ -149,15 +149,15 @@ TEST_CASE("Scope display cost per frame", "[realtime]") {
   engine.noteOn(57, 80);
   std::vector<float> x(800), y(800);
   cs::ScopeView view(512);
-  std::vector<std::uint8_t> rgb;
-  view.render(rgb); // first frame sizes the scratch buffers
+  std::vector<std::uint32_t> argb;
+  view.renderARGB(argb); // first frame sizes the scratch buffers
   const int frames = 120;
   const auto start = Clock::now();
   for (int f = 0; f < frames; ++f) {
     engine.process(x.data(), y.data(), 800);
     view.beginFrame(1.0 / 60.0);
     view.addSamples(x.data(), y.data(), 800);
-    view.render(rgb);
+    view.renderARGB(argb);
   }
   const double ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count() / frames;
   WARN("scope frame (accumulate + tone map, 512 x 512): " << ms << " ms = " << ms / (1000.0 / 60.0) * 100.0

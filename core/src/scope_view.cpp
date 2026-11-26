@@ -57,6 +57,41 @@ void blur(std::vector<float>& img, int size, double sigma, std::vector<float>& t
   }
 }
 
+// 2 x 2 box downsample of an n x n image.
+void halve(const std::vector<float>& src, std::size_t n, std::vector<float>& dst) {
+  const std::size_t h = n / 2;
+  dst.resize(h * h);
+  for (std::size_t r = 0; r < h; ++r) {
+    const float* a = src.data() + 2 * r * n;
+    const float* b = a + n;
+    float* d = dst.data() + r * h;
+    for (std::size_t c = 0; c < h; ++c)
+      d[c] = 0.25f * (a[2 * c] + a[2 * c + 1] + b[2 * c] + b[2 * c + 1]);
+  }
+}
+
+// Bilinear 2 x upsample of an h x h image, edges held: fixed 3/4, 1/4 weights.
+void doubleSize(const std::vector<float>& src, std::size_t h, std::vector<float>& dst, std::vector<float>& row) {
+  const std::size_t n = 2 * h;
+  dst.resize(n * n);
+  row.resize(h + 2);
+  for (std::size_t r = 0; r < n; ++r) {
+    const std::size_t j = r / 2;
+    const std::size_t other = (r & 1) ? std::min(j + 1, h - 1) : (j == 0 ? 0 : j - 1);
+    const float* a = src.data() + j * h;
+    const float* b = src.data() + other * h;
+    for (std::size_t c = 0; c < h; ++c)
+      row[c + 1] = 0.75f * a[c] + 0.25f * b[c];
+    row[0] = row[1];
+    row[h + 1] = row[h];
+    float* d = dst.data() + r * n;
+    for (std::size_t c = 0; c < h; ++c) {
+      d[2 * c] = 0.25f * row[c] + 0.75f * row[c + 1];
+      d[2 * c + 1] = 0.75f * row[c + 1] + 0.25f * row[c + 2];
+    }
+  }
+}
+
 } // namespace
 
 ScopeView::ScopeView(int size) : size_(size), acc_(static_cast<std::size_t>(size) * static_cast<std::size_t>(size), 0.0f) {}
@@ -68,8 +103,10 @@ void ScopeView::clear() {
 
 void ScopeView::beginFrame(double dt) {
   const auto k = static_cast<float>(std::pow(decay_, dt * 30.0));
-  for (float& v : acc_)
+  for (float& v : acc_) {
     v *= k;
+    v = v < 1e-4f ? 0.0f : v; // faded out; also keeps denormals out of the blurs
+  }
 }
 
 void ScopeView::addSamples(const float* x, const float* y, int n) {
@@ -95,7 +132,7 @@ void ScopeView::addSamples(const float* x, const float* y, int n) {
   }
 }
 
-void ScopeView::render(std::vector<std::uint8_t>& rgb) const {
+void ScopeView::renderARGB(std::vector<std::uint32_t>& argb) const {
   const std::size_t count = acc_.size();
   const auto n = static_cast<std::size_t>(size_);
   // Core: slight blur, then a log tone map. Most of the screen is dark.
@@ -110,73 +147,62 @@ void ScopeView::render(std::vector<std::uint8_t>& rgb) const {
   }();
   const auto norm = static_cast<float>(kToneScale / (kUpsample * gainFor(size_)));
   for (float& v : img_) {
-    const float t = std::min(v * norm, static_cast<float>(kToneSize));
+    const float scaled = v * norm;
+    const float t = scaled < 1e-3f ? 0.0f : std::min(scaled, static_cast<float>(kToneSize));
     const auto i = static_cast<std::size_t>(t);
     v = toneTable[i] + (toneTable[i + 1] - toneTable[i]) * (t - static_cast<float>(i));
   }
 
-  // Glow at half resolution, as the video renderer does: a wide halo
-  // (sigma 7 px) and a narrow one (sigma 2.5 px).
-  const int half = size_ / 2;
-  const auto h = static_cast<std::size_t>(half);
-  wide_.resize(h * h);
-  for (std::size_t r = 0; r < h; ++r)
-    for (std::size_t c = 0; c < h; ++c)
-      wide_[r * h + c] = 0.25f * (img_[2 * r * n + 2 * c] + img_[2 * r * n + 2 * c + 1] + img_[(2 * r + 1) * n + 2 * c] +
-                                  img_[(2 * r + 1) * n + 2 * c + 1]);
-  narrow_ = wide_;
-  blur(wide_, half, 3.5, tmp_, pad_);
-  blur(narrow_, half, 1.25, tmp_, pad_);
+  // Glow: a narrow halo (sigma 2.5 px) blurred at half resolution, as the
+  // video renderer does, and a wide one (sigma 7 px) at quarter resolution.
+  const std::size_t h = n / 2, q = n / 4;
+  halve(img_, n, narrow_);
+  halve(narrow_, h, wide_);
+  blur(narrow_, static_cast<int>(h), 1.25, tmp_, pad_);
+  blur(wide_, static_cast<int>(q), 1.75, tmp_, pad_);
+  doubleSize(wide_, q, glowHalf_, pad_);
   for (std::size_t i = 0; i < h * h; ++i)
-    wide_[i] = wide_[i] * 1.2f + narrow_[i] * 0.7f;
+    glowHalf_[i] = glowHalf_[i] * 1.2f + narrow_[i] * 0.7f;
+  doubleSize(glowHalf_, h, glow_, pad_);
 
-  if (graticule_ && grat_.empty()) {
+  if (grat_.size() != count) {
     // 8 x 8 divisions across +-0.95 of full scale, faint.
-    grat_.assign(count, 0);
+    grat_.assign(count, 0.0f);
     const double scale = size_ / (2.0 * kRange);
     const int lo = static_cast<int>(std::lround((kRange - 0.95) * scale));
     const int hi = std::min(size_ - 1, static_cast<int>(std::lround((kRange + 0.95) * scale)));
     for (int k = 0; k <= 8; ++k) {
       const auto line = static_cast<std::size_t>(std::min(size_ - 1, static_cast<int>(std::lround(lo + (hi - lo) * k / 8.0))));
       for (auto j = static_cast<std::size_t>(lo); j <= static_cast<std::size_t>(hi); ++j)
-        grat_[line * n + j] = grat_[j * n + line] = 1;
+        grat_[line * n + j] = grat_[j * n + line] = 0.055f;
     }
   }
 
-  // Bilinear upsample of the glow: column weights once, one blended row per line.
-  if (colIndex_.size() != n) {
-    colIndex_.resize(n);
-    colWeight_.resize(n);
-    for (std::size_t c = 0; c < n; ++c) {
-      const float f = std::clamp((static_cast<float>(c) - 0.5f) * 0.5f, 0.0f, static_cast<float>(half - 1));
-      colIndex_[c] = static_cast<std::uint32_t>(std::min(static_cast<std::size_t>(f), h - 2));
-      colWeight_[c] = f - static_cast<float>(colIndex_[c]);
-    }
+  // Colour: luminance x (0.35, 1.0, 0.45), plus white above 0.75 for a hot core.
+  argb.resize(count);
+  const float gratGain = graticule_ ? 255.0f : 0.0f;
+  const float* core = img_.data();
+  const float* glow = glow_.data();
+  const float* grat = grat_.data();
+  std::uint32_t* out = argb.data();
+  for (std::size_t i = 0; i < count; ++i) {
+    const float lum = std::min(core[i] * 0.9f + glow[i], 1.0f);
+    const float hot = std::max(lum - 0.75f, 0.0f) * (1.2f * 255.0f);
+    const float g = grat[i] * gratGain;
+    const auto red = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::min(lum * (0.35f * 255.0f) + hot + g * 0.75f, 255.0f)));
+    const auto green = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::min(lum * 255.0f + hot + g * 0.9f, 255.0f)));
+    const auto blue = static_cast<std::uint32_t>(static_cast<std::int32_t>(std::min(lum * (0.45f * 255.0f) + hot + g * 0.8f, 255.0f)));
+    out[i] = 0xff000000u | (red << 16) | (green << 8) | blue;
   }
-  rgb.resize(count * 3);
-  tmp_.resize(std::max(tmp_.size(), h + n));
-  float* glowHalf = tmp_.data();
-  float* glow = tmp_.data() + h;
-  for (std::size_t r = 0; r < n; ++r) {
-    const std::size_t y0 = colIndex_[r];
-    const float wy = colWeight_[r];
-    const float* a = wide_.data() + y0 * h;
-    const float* b = a + h;
-    for (std::size_t c = 0; c < h; ++c)
-      glowHalf[c] = a[c] + (b[c] - a[c]) * wy;
-    for (std::size_t c = 0; c < n; ++c)
-      glow[c] = glowHalf[colIndex_[c]] + (glowHalf[colIndex_[c] + 1] - glowHalf[colIndex_[c]]) * colWeight_[c];
-    const float* core = img_.data() + r * n;
-    const std::uint8_t* grat = graticule_ ? grat_.data() + r * n : nullptr;
-    std::uint8_t* out = rgb.data() + r * n * 3;
-    for (std::size_t c = 0; c < n; ++c) {
-      const float lum = std::min(core[c] * 0.9f + glow[c], 1.0f);
-      const float hot = std::max(lum - 0.75f, 0.0f) * 1.2f; // hot core -> white
-      const float g = grat && grat[c] ? 0.055f : 0.0f;
-      out[3 * c + 0] = static_cast<std::uint8_t>(std::min(lum * 0.35f + hot + g * 0.75f, 1.0f) * 255.0f + 0.5f);
-      out[3 * c + 1] = static_cast<std::uint8_t>(std::min(lum + hot + g * 0.9f, 1.0f) * 255.0f + 0.5f);
-      out[3 * c + 2] = static_cast<std::uint8_t>(std::min(lum * 0.45f + hot + g * 0.8f, 1.0f) * 255.0f + 0.5f);
-    }
+}
+
+void ScopeView::render(std::vector<std::uint8_t>& rgb) const {
+  renderARGB(argbScratch_);
+  rgb.resize(argbScratch_.size() * 3);
+  for (std::size_t i = 0; i < argbScratch_.size(); ++i) {
+    rgb[3 * i + 0] = static_cast<std::uint8_t>(argbScratch_[i] >> 16);
+    rgb[3 * i + 1] = static_cast<std::uint8_t>(argbScratch_[i] >> 8);
+    rgb[3 * i + 2] = static_cast<std::uint8_t>(argbScratch_[i]);
   }
 }
 

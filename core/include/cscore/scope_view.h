@@ -26,7 +26,9 @@ public:
   // per sample so brightness follows dwell.
   void addSamples(const float* x, const float* y, int n);
 
-  // Tone-map the accumulated light into size x size RGB8, row 0 at the top.
+  // Tone-map the accumulated light into size x size pixels, row 0 at the top:
+  // 0xAARRGGBB words (opaque), or RGB8 bytes.
+  void renderARGB(std::vector<std::uint32_t>& argb) const;
   void render(std::vector<std::uint8_t>& rgb) const;
 
 private:
@@ -37,10 +39,8 @@ private:
   float lastX_ = 0.0f, lastY_ = 0.0f;
   std::vector<float> acc_;
   // render() scratch, kept so a display frame allocates nothing after the first
-  mutable std::vector<float> img_, wide_, narrow_, tmp_, pad_;
-  mutable std::vector<std::uint8_t> grat_;
-  mutable std::vector<std::uint32_t> colIndex_;
-  mutable std::vector<float> colWeight_;
+  mutable std::vector<float> img_, wide_, narrow_, glowHalf_, glow_, grat_, tmp_, pad_;
+  mutable std::vector<std::uint32_t> argbScratch_;
 };
 
 } // namespace cs

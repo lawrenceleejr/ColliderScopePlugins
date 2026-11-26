@@ -13,4 +13,6 @@ if(MSVC)
   target_compile_options(cscore PRIVATE /W4)
 else()
   target_compile_options(cscore PRIVATE -Wall -Wextra -Wpedantic)
+  # The scope's blur loops need the vectoriser, which GCC holds back at -O2.
+  target_compile_options(cscore PRIVATE $<$<CONFIG:Release>:-O3>)
 endif()
