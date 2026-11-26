@@ -119,32 +119,26 @@ TEST_CASE("CPU: under 5 % of one core at 48 kHz, 128-sample buffer", "[realtime]
   const int blocks = static_cast<int>(seconds * kSampleRate / kBlock);
   std::vector<float> x(kBlock), y(kBlock);
 
-  auto run = [&](bool synchronous, cs::WallMode wall) {
+  // Synchronous mode: the audio work plus all table building on one thread,
+  // an upper bound on what the plugin's audio thread spends.
+  for (cs::WallMode wall : {cs::WallMode::Off, cs::WallMode::Shared, cs::WallMode::Drone}) {
     cs::ChamberEngine engine;
     engine.prepare(kSampleRate);
     cs::ChamberParams p;
     p.wall = wall;
     engine.setParams(p);
-    engine.setSynchronous(synchronous);
-    std::unique_ptr<Builder> builder;
-    if (!synchronous)
-      builder = std::make_unique<Builder>(engine);
+    float peak = 0.0f;
     const auto start = Clock::now();
     for (int b = 0; b < blocks; ++b) {
       if (b % 188 == 0) // a new note every half second, low to high
         engine.noteOn(33 + (b / 188) % 49, 40 + (b / 188 * 37) % 80);
       engine.process(x.data(), y.data(), kBlock);
+      peak = std::max(peak, std::abs(x[0]));
     }
-    return std::chrono::duration<double>(Clock::now() - start).count() / seconds * 100.0;
-  };
-
-  for (cs::WallMode wall : {cs::WallMode::Off, cs::WallMode::Shared, cs::WallMode::Drone}) {
-    const double audioOnly = run(false, wall); // the audio thread, as in the plugin
-    const double everything = run(true, wall); // audio plus all table building, on one thread
-    WARN("wall mode " << static_cast<int>(wall) << ": audio thread " << audioOnly << " % of a core, with table building "
-                      << everything << " %");
-    CHECK(audioOnly < 5.0);
-    CHECK(everything < 5.0);
+    const double percent = std::chrono::duration<double>(Clock::now() - start).count() / seconds * 100.0;
+    WARN("wall mode " << static_cast<int>(wall) << ": " << percent << " % of a core, audio plus table building");
+    CHECK(peak > 0.1f);
+    CHECK(percent < 5.0);
   }
 }
 

@@ -39,6 +39,8 @@ private:
   // render() scratch, kept so a display frame allocates nothing after the first
   mutable std::vector<float> img_, wide_, narrow_, tmp_, pad_;
   mutable std::vector<std::uint8_t> grat_;
+  mutable std::vector<std::uint32_t> colIndex_;
+  mutable std::vector<float> colWeight_;
 };
 
 } // namespace cs

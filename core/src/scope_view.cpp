@@ -1,6 +1,7 @@
 #include "cscore/scope_view.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace cs {
@@ -9,6 +10,8 @@ namespace {
 
 constexpr int kUpsample = 6;
 constexpr double kRange = 1.02; // the display spans +-1.02 of full scale
+constexpr std::size_t kToneSize = 4096;
+constexpr double kToneScale = kToneSize / 10.19; // table spans x = 0 .. 5^1.5 - 1
 
 // The video renderer uses gain 0.2 for a 1000 px scope at 30 fps. Light per
 // pixel scales with 1/size for a line, and with the frame rate through the
@@ -98,10 +101,19 @@ void ScopeView::render(std::vector<std::uint8_t>& rgb) const {
   // Core: slight blur, then a log tone map. Most of the screen is dark.
   img_ = acc_;
   blur(img_, size_, 1.1, tmp_, pad_);
-  const auto norm = static_cast<float>(1.0 / (kUpsample * gainFor(size_)));
-  const float invLog = 1.0f / std::log1p(4.0f);
-  for (float& v : img_)
-    v = v * norm < 1e-4f ? 0.0f : std::min(1.5f, std::log1p(v * norm) * invLog);
+  // log1p(x) / log1p(4), clipped at 1.5 (x = 5^1.5 - 1), from a table.
+  static const auto toneTable = [] {
+    std::array<float, kToneSize + 2> t{};
+    for (std::size_t i = 0; i < t.size(); ++i)
+      t[i] = std::min(1.5f, static_cast<float>(std::log1p(static_cast<double>(i) / kToneScale) / std::log1p(4.0)));
+    return t;
+  }();
+  const auto norm = static_cast<float>(kToneScale / (kUpsample * gainFor(size_)));
+  for (float& v : img_) {
+    const float t = std::min(v * norm, static_cast<float>(kToneSize));
+    const auto i = static_cast<std::size_t>(t);
+    v = toneTable[i] + (toneTable[i + 1] - toneTable[i]) * (t - static_cast<float>(i));
+  }
 
   // Glow at half resolution, as the video renderer does: a wide halo
   // (sigma 7 px) and a narrow one (sigma 2.5 px).
@@ -131,28 +143,39 @@ void ScopeView::render(std::vector<std::uint8_t>& rgb) const {
     }
   }
 
-  rgb.resize(count * 3);
-  const float maxIndex = static_cast<float>(half - 1);
-  for (std::size_t r = 0; r < n; ++r) {
-    // Bilinear upsample of the glow.
-    const float fy = std::clamp((static_cast<float>(r) - 0.5f) * 0.5f, 0.0f, maxIndex);
-    const auto y0 = static_cast<std::size_t>(fy);
-    const std::size_t y1 = std::min(y0 + 1, h - 1);
-    const float wy = fy - static_cast<float>(y0);
+  // Bilinear upsample of the glow: column weights once, one blended row per line.
+  if (colIndex_.size() != n) {
+    colIndex_.resize(n);
+    colWeight_.resize(n);
     for (std::size_t c = 0; c < n; ++c) {
-      const float fx = std::clamp((static_cast<float>(c) - 0.5f) * 0.5f, 0.0f, maxIndex);
-      const auto x0 = static_cast<std::size_t>(fx);
-      const std::size_t x1 = std::min(x0 + 1, h - 1);
-      const float wx = fx - static_cast<float>(x0);
-      const float glow = (wide_[y0 * h + x0] * (1 - wx) + wide_[y0 * h + x1] * wx) * (1 - wy) +
-                         (wide_[y1 * h + x0] * (1 - wx) + wide_[y1 * h + x1] * wx) * wy;
-      const std::size_t i = r * n + c;
-      const float lum = std::clamp(img_[i] * 0.9f + glow, 0.0f, 1.0f);
+      const float f = std::clamp((static_cast<float>(c) - 0.5f) * 0.5f, 0.0f, static_cast<float>(half - 1));
+      colIndex_[c] = static_cast<std::uint32_t>(std::min(static_cast<std::size_t>(f), h - 2));
+      colWeight_[c] = f - static_cast<float>(colIndex_[c]);
+    }
+  }
+  rgb.resize(count * 3);
+  tmp_.resize(std::max(tmp_.size(), h + n));
+  float* glowHalf = tmp_.data();
+  float* glow = tmp_.data() + h;
+  for (std::size_t r = 0; r < n; ++r) {
+    const std::size_t y0 = colIndex_[r];
+    const float wy = colWeight_[r];
+    const float* a = wide_.data() + y0 * h;
+    const float* b = a + h;
+    for (std::size_t c = 0; c < h; ++c)
+      glowHalf[c] = a[c] + (b[c] - a[c]) * wy;
+    for (std::size_t c = 0; c < n; ++c)
+      glow[c] = glowHalf[colIndex_[c]] + (glowHalf[colIndex_[c] + 1] - glowHalf[colIndex_[c]]) * colWeight_[c];
+    const float* core = img_.data() + r * n;
+    const std::uint8_t* grat = graticule_ ? grat_.data() + r * n : nullptr;
+    std::uint8_t* out = rgb.data() + r * n * 3;
+    for (std::size_t c = 0; c < n; ++c) {
+      const float lum = std::min(core[c] * 0.9f + glow[c], 1.0f);
       const float hot = std::max(lum - 0.75f, 0.0f) * 1.2f; // hot core -> white
-      const float g = graticule_ && grat_[i] ? 0.055f : 0.0f;
-      rgb[3 * i + 0] = static_cast<std::uint8_t>(std::min(lum * 0.35f + hot + g * 0.75f, 1.0f) * 255.0f + 0.5f);
-      rgb[3 * i + 1] = static_cast<std::uint8_t>(std::min(lum + hot + g * 0.9f, 1.0f) * 255.0f + 0.5f);
-      rgb[3 * i + 2] = static_cast<std::uint8_t>(std::min(lum * 0.45f + hot + g * 0.8f, 1.0f) * 255.0f + 0.5f);
+      const float g = grat && grat[c] ? 0.055f : 0.0f;
+      out[3 * c + 0] = static_cast<std::uint8_t>(std::min(lum * 0.35f + hot + g * 0.75f, 1.0f) * 255.0f + 0.5f);
+      out[3 * c + 1] = static_cast<std::uint8_t>(std::min(lum + hot + g * 0.9f, 1.0f) * 255.0f + 0.5f);
+      out[3 * c + 2] = static_cast<std::uint8_t>(std::min(lum * 0.45f + hot + g * 0.8f, 1.0f) * 255.0f + 0.5f);
     }
   }
 }
