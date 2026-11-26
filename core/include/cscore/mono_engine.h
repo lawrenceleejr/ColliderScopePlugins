@@ -47,13 +47,14 @@ struct VoiceParams {
   double bendRange = 2.0; // 0-12 semitones
   double gainDb = 0.0;    // -24 to 0 dB
   Quality quality = Quality::ScopeExact;
+  Timing timing = Timing::Harmonic;
 };
 
 template <typename Source>
 class MonoEngine {
 public:
   using Params = typename Source::Params;
-  static constexpr std::size_t kTableSize = 2048;
+  static constexpr std::size_t kTableSize = 4096;
 
   MonoEngine() { prepare(48000.0); }
 

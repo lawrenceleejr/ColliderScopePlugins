@@ -107,7 +107,8 @@ public:
 private:
   OrbitalShape shape_;
   int chosen_ = 1;
-  std::vector<Stroke> strokes_;
+  std::vector<Stroke> strokes_, ordered_;
+  HarmonicGrid grid_;
 };
 
 using OrbitalEngine = MonoEngine<OrbitalSource>;

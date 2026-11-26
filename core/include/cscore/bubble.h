@@ -68,6 +68,7 @@ private:
   Rng noise_{1};
   std::vector<float> bubbleScale_; // each bubble's own size, fixed at birth
   std::vector<Stroke> strokes_;
+  HarmonicGrid grid_;
   void makeTracks(const Params& params);
 };
 

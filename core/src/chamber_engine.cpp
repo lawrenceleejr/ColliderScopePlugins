@@ -511,6 +511,24 @@ void ChamberEngine::build(const BuilderInput& in, double age) {
     return strokesToPath(orderStrokes(std::move(strokes_), from));
   };
 
+  Frame& frame = frames_.back();
+  frame.serial = in.serial;
+  frame.periodHz = midiToHz(p.wall == WallMode::Drone ? p.wallRoot : in.note);
+  if (p.timing == Timing::Harmonic && p.wall != WallMode::Drone) {
+    // Strokes on a grid of equal slots, chosen for a consonant spectrum.
+    gridStrokes_.clear();
+    if (p.wall == WallMode::Shared)
+      gridStrokes_.push_back(wall_);
+    strokes_.clear();
+    ageTrack(track_, age, ageing, noise_, strokes_);
+    for (Stroke& s : orderStrokes(std::move(strokes_), p.wall == WallMode::Shared ? wallEnd : Vec2{}))
+      gridStrokes_.push_back(std::move(s));
+    strokes_.clear();
+    grid_.build(gridStrokes_, frame.table);
+    frames_.publish();
+    return;
+  }
+
   segments_.clear();
   switch (p.wall) {
   case WallMode::Off:
@@ -545,10 +563,7 @@ void ChamberEngine::build(const BuilderInput& in, double age) {
     break;
   }
   }
-  Frame& frame = frames_.back();
   buildTable(segments_, frame.table);
-  frame.serial = in.serial;
-  frame.periodHz = midiToHz(p.wall == WallMode::Drone ? p.wallRoot : in.note);
   frames_.publish();
 }
 

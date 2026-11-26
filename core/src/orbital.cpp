@@ -195,8 +195,13 @@ void OrbitalSource::build(const Params& params, int, double age, std::span<XY> t
       flush();
     }
   }
-  const Path path = strokesToPath(orderStrokes(std::move(strokes_), {}));
+  ordered_ = orderStrokes(std::move(strokes_), {});
   strokes_.clear();
+  if (params.voice.timing == Timing::Harmonic) {
+    grid_.build(ordered_, table); // every wire on a grid of equal slots
+    return;
+  }
+  const Path path = strokesToPath(ordered_);
   const Segment segment{path, 1.0};
   buildTable(std::span<const Segment>(&segment, 1), table);
 }

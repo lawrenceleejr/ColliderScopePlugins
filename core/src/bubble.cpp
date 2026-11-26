@@ -164,6 +164,10 @@ void BubbleSource::build(const Params& params, int, double age, std::span<XY> ta
   }
   // Bubbles are already in order along the track: keep it, so the picture
   // is drawn the way the particle flew.
+  if (params.voice.timing == Timing::Harmonic) {
+    grid_.build(strokes_, table); // every bubble on a grid of equal slots
+    return;
+  }
   const Path path = strokesToPath(strokes_);
   const Segment segment{path, 1.0};
   buildTable(std::span<const Segment>(&segment, 1), table);

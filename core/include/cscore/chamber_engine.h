@@ -34,6 +34,9 @@ enum class SeedMode { Random, PerKey, Global };
 enum class WallMode { Off, Shared, Drone };
 // Scope-exact: the table read as is. Clean: 4x oversampled with a gentle low-pass.
 enum class Quality { ScopeExact, Clean };
+// Even: time along the path by arc length, for even brightness. Harmonic:
+// strokes on a grid of equal slots, for a more consonant spectrum (see path.h).
+enum class Timing { Even, Harmonic };
 
 struct ChamberParams {
   TypeMode type = TypeMode::Auto;
@@ -52,6 +55,7 @@ struct ChamberParams {
   double gainDb = 0.0;         // -24 to 0 dB
   Quality quality = Quality::ScopeExact;
   int voices = 1;              // 1 = mono; 2-6 = polyphonic, voices sharing each period
+  Timing timing = Timing::Harmonic; // Off and Shared wall, one key; Drone and chords are harmonic by construction
   std::uint64_t seed = 1;      // base seed for all three seed modes
 };
 
@@ -178,6 +182,8 @@ private:
   std::vector<Segment> segments_;
   std::array<PolyVoice, kMaxVoices> polyVoices_{};
   ChordPlan chordPlan_;
+  HarmonicGrid grid_;
+  std::vector<Stroke> gridStrokes_;
 };
 
 } // namespace cs

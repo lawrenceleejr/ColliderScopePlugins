@@ -24,7 +24,7 @@ const char* kUsage =
     "      chamber:\n"
     "      --type auto|alpha|muon|electron|random   --seed-mode random|key|global   --seed N\n"
     "      --wall off|shared|drone   --root NOTE   --share P\n"
-    "      --diffusion R   --drift R   --condense MS   --size S   --attack MS   --release MS   --glide MS   --gain DB   --quality exact|clean   --voices N\n"
+    "      --diffusion R   --drift R   --condense MS   --size S   --attack MS   --release MS   --glide MS   --gain DB   --quality exact|clean   --voices N   --timing even|harmonic\n"
     "  csrender hit kick|snare|crash --out PREFIX [--radius R] [--seed N]\n"
     "      Render one drum hit.\n"
     "  csrender mux A.wav B.wav --out PREFIX [--mode interleave|lock|slot] [options]\n"
@@ -142,6 +142,7 @@ void readVoice(const Args& args, cs::VoiceParams& v) {
   v.glideMs = args.num("glide", v.glideMs);
   v.gainDb = args.num("gain", v.gainDb);
   v.quality = choose<cs::Quality>(args, "quality", {{"exact", cs::Quality::ScopeExact}, {"clean", cs::Quality::Clean}}, v.quality);
+  v.timing = choose<cs::Timing>(args, "timing", {{"even", cs::Timing::Even}, {"harmonic", cs::Timing::Harmonic}}, v.timing);
 }
 
 csio::Audio renderBubble(const Args& args, double sampleRate) {
@@ -216,6 +217,7 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
   p.quality = choose<cs::Quality>(args, "quality", {{"exact", cs::Quality::ScopeExact}, {"clean", cs::Quality::Clean}},
                                   p.quality);
   p.voices = static_cast<int>(args.num("voices", 1));
+  p.timing = choose<cs::Timing>(args, "timing", {{"even", cs::Timing::Even}, {"harmonic", cs::Timing::Harmonic}}, p.timing);
   p.seed = static_cast<std::uint64_t>(args.num("seed", 1));
   p.wallRoot = static_cast<int>(args.num("root", p.wallRoot));
   p.wallShare = args.num("share", p.wallShare);
