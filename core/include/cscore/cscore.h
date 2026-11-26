@@ -10,6 +10,7 @@
 #include "cscore/hits.h"
 #include "cscore/lockfree.h"
 #include "cscore/mono_engine.h"
+#include "cscore/multi.h"
 #include "cscore/mux_engine.h"
 #include "cscore/orbital.h"
 #include "cscore/oscillator.h"

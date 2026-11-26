@@ -9,7 +9,7 @@
 //
 //   struct Source {
 //     struct Params { VoiceParams voice; ... };   // trivially copyable
-//     static constexpr double kRebuildSeconds;     // shortest time between pictures
+//     static double rebuildSeconds(const Params&); // shortest time between pictures
 //     void prepare(double sampleRate);
 //     void birth(const Params&, int note, int velocity, std::uint32_t serial);
 //     void build(const Params&, int note, double age, std::span<XY> table);
@@ -63,7 +63,6 @@ public:
     while (servicing_.test_and_set())
       std::this_thread::yield();
     sampleRate_ = builderSampleRate_ = sampleRate;
-    minRebuild_ = static_cast<std::int64_t>(Source::kRebuildSeconds * sampleRate);
     env_.setSampleRate(sampleRate);
     env_.reset();
     osc_.reset();
@@ -86,6 +85,7 @@ public:
     env_.setAttack(v.attackMs * 1e-3);
     env_.setRelease(v.releaseMs * 1e-3);
     gain_ = static_cast<float>(std::clamp(v.size, 0.0, 1.0) * std::pow(10.0, std::min(v.gainDb, 0.0) / 20.0));
+    minRebuild_ = static_cast<std::int64_t>(Source::rebuildSeconds(params) * sampleRate_);
     updateStep();
     publishInput();
   }
@@ -201,6 +201,9 @@ public:
 
   // Builder state: read it only in synchronous mode.
   const Source& source() const noexcept { return source_; }
+  // For the parts of a source that are safe to reach from another thread
+  // (a source says which, if any).
+  Source& sourceForSetup() noexcept { return source_; }
 
 private:
   struct Frame {

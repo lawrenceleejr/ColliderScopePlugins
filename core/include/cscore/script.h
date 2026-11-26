@@ -55,7 +55,7 @@ struct ScriptParams {
 class ScriptSource {
 public:
   using Params = ScriptParams;
-  static constexpr double kRebuildSeconds = 0.004;
+  static double rebuildSeconds(const Params&) noexcept { return 0.004; }
 
   void prepare(double) {}
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);

@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <string>
 #include <vector>
@@ -18,7 +20,11 @@ const char* kUsage =
     "csrender %s\n"
     "\n"
     "  csrender notes --out PREFIX [--notes NOTE:START:DUR[:VEL],...] [options]\n"
-    "      Play a note list through an instrument: --instrument chamber (default), bubble, orbital or script.\n"
+    "      Play a note list through an instrument: --instrument chamber (default), bubble, orbital, script, function, collision or mesh.\n"
+    "      function:  --function 'sin(3*r - 4*t) / (1 + r)'   --range R   --height H   --lines N   --hidden 0|1   --spin DEG/S\n"
+    "      collision: --event auto|minbias|dijet|zmumu|multijet|fourmuon|random   --field F   --pileup P   --detector 0|1   --form MS\n"
+    "      mesh:      --stl FILE.stl   --zoom Z   --spin DEG/S   --axis x|y|z   --crease DEG   --cull 0|1   --edges N\n"
+    "      function and mesh also take a camera: --azimuth DEG   --elevation DEG   --roll DEG   --perspective 0..1\n"
     "      script:  --text 'E = mc^2' (LaTeX-like: ^ _ \\frac \\sqrt \\alpha ...)   --write MS   --slant S\n"
     "      bubble:  --type auto|electron|pair|decay|beam|random   --field F   --bubbles N   --growth R   --boil B   --form MS\n"
     "      orbital: --orbital auto|1s|2s|2pz|2px|3dz2|...|4fz3   --spin DEG/S   --tilt DEG   --lines N   --level L   --bloom MS\n"
@@ -205,8 +211,93 @@ csio::Audio renderScript(const Args& args, double sampleRate) {
   return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
 }
 
+void readCamera(const Args& args, cs::Camera& camera) {
+  camera.azimuth = args.num("azimuth", camera.azimuth);
+  camera.elevation = args.num("elevation", camera.elevation);
+  camera.roll = args.num("roll", camera.roll);
+  camera.perspective = args.num("perspective", camera.perspective);
+}
+
+csio::Audio renderFunction(const Args& args, double sampleRate) {
+  cs::SurfaceParams p;
+  readVoice(args, p.voice);
+  p.setFunction(args.str("function", "sin(3*r - 4*t) / (1 + r)"));
+  cs::Expression check;
+  std::string error;
+  if (!check.compile(p.function.data(), &error))
+    fail("function: " + error);
+  p.range = args.num("range", p.range);
+  p.height = args.num("height", p.height);
+  p.lines = static_cast<int>(args.num("lines", p.lines));
+  p.hidden = args.num("hidden", 1) != 0;
+  p.spin = args.num("spin", p.spin);
+  readCamera(args, p.camera);
+  cs::SurfaceEngine voice;
+  voice.prepare(sampleRate);
+  voice.setParams(p);
+  return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
+}
+
+csio::Audio renderCollision(const Args& args, double sampleRate) {
+  cs::CollisionParams p;
+  readVoice(args, p.voice);
+  p.event = choose<cs::CollisionEvent>(args, "event",
+                                       {{"auto", cs::CollisionEvent::Auto},
+                                        {"minbias", cs::CollisionEvent::MinimumBias},
+                                        {"dijet", cs::CollisionEvent::Dijet},
+                                        {"zmumu", cs::CollisionEvent::ZToMuons},
+                                        {"multijet", cs::CollisionEvent::Multijet},
+                                        {"fourmuon", cs::CollisionEvent::FourMuons},
+                                        {"random", cs::CollisionEvent::Random}},
+                                       p.event);
+  p.seed = static_cast<std::uint64_t>(args.num("seed", 1));
+  p.field = args.num("field", p.field);
+  p.pileup = args.num("pileup", p.pileup);
+  p.detector = args.num("detector", 1) != 0;
+  p.formMs = args.num("form", p.formMs);
+  cs::CollisionEngine voice;
+  voice.prepare(sampleRate);
+  voice.setParams(p);
+  return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
+}
+
+csio::Audio renderMesh(const Args& args, double sampleRate) {
+  cs::MeshParams p;
+  readVoice(args, p.voice);
+  readCamera(args, p.camera);
+  p.zoom = args.num("zoom", p.zoom);
+  p.spin = args.num("spin", p.spin);
+  p.spinAxis = choose<int>(args, "axis", {{"x", 0}, {"y", 1}, {"z", 2}}, p.spinAxis);
+  p.crease = args.num("crease", p.crease);
+  p.cull = args.num("cull", 1) != 0;
+  p.maxEdges = static_cast<int>(args.num("edges", p.maxEdges));
+  cs::MeshEngine voice;
+  if (args.has("stl")) {
+    std::ifstream file(args.str("stl", ""), std::ios::binary);
+    if (!file)
+      fail("cannot open " + args.str("stl", ""));
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::string error;
+    auto mesh = cs::parseStl(bytes, &error);
+    if (!mesh)
+      fail(args.str("stl", "") + ": " + error);
+    std::printf("%s: %zu vertices, %zu faces, %zu edges\n", args.str("stl", "").c_str(), mesh->vertices.size(),
+                mesh->faces.size(), mesh->edges.size());
+    voice.sourceForSetup().setMesh(std::move(mesh));
+  }
+  voice.prepare(sampleRate);
+  voice.setParams(p);
+  return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
+}
+
 csio::Audio renderNotes(const Args& args, double sampleRate) {
   const std::string instrument = args.str("instrument", "chamber");
+  if (instrument == "function")
+    return renderFunction(args, sampleRate);
+  if (instrument == "collision")
+    return renderCollision(args, sampleRate);
+  if (instrument == "mesh")
+    return renderMesh(args, sampleRate);
   if (instrument == "script")
     return renderScript(args, sampleRate);
   if (instrument == "bubble")
@@ -214,7 +305,7 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
   if (instrument == "orbital")
     return renderOrbital(args, sampleRate);
   if (instrument != "chamber")
-    fail("unknown instrument '" + instrument + "' (chamber, bubble, orbital, script)");
+    fail("unknown instrument '" + instrument + "' (chamber, bubble, orbital, script, function, collision, mesh)");
   cs::ChamberParams p;
   p.type = choose<cs::TypeMode>(args, "type",
                                 {{"auto", cs::TypeMode::Auto},

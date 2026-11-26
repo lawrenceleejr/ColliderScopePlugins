@@ -49,7 +49,7 @@ class BubbleSource {
 public:
   using Params = BubbleParams;
   static constexpr double kChamberRadius = 0.9;
-  static constexpr double kRebuildSeconds = 0.002;
+  static double rebuildSeconds(const Params&) noexcept { return 0.002; }
 
   void prepare(double) {}
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);

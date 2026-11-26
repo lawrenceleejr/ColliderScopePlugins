@@ -2,13 +2,17 @@
 add_library(cscore STATIC
   src/bubble.cpp
   src/chamber_engine.cpp
+  src/collision.cpp
   src/cscore.cpp
+  src/expr.cpp
   src/hits.cpp
+  src/mesh.cpp
   src/mux_engine.cpp
   src/orbital.cpp
   src/path.cpp
   src/scope_view.cpp
   src/script.cpp
+  src/surface.cpp
   src/tracks.cpp
   src/yin.cpp)
 target_include_directories(cscore PUBLIC include)

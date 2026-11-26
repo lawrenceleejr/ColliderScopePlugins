@@ -130,6 +130,10 @@ void BubbleSource::build(const Params& params, int, double age, std::span<XY> ta
   std::size_t total = 0;
   for (const BubbleTrack& t : tracks_)
     total += t.points.size();
+  if (total == 0) { // no event yet
+    std::fill(table.begin(), table.end(), XY{});
+    return;
+  }
   const int count = std::clamp(params.bubbles, 4, 240);
   // The track appears along its length, as the particle crosses.
   const double formed = params.formMs > 0.0 ? std::clamp(age / (params.formMs * 1e-3), 0.0, 1.0) : 1.0;
