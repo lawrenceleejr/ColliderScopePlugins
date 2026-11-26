@@ -17,6 +17,9 @@ mkdir -p "$out"
 "$csrender" notes --notes 57:0:1.2:40 --type electron --wall drone --root 33 --seed 4 --at 0.6 --out "$out/chamber_drone_h4"
 # A short melody with hard rests, velocity picking the type.
 "$csrender" notes --notes 57:0:0.4:80,60:0.5:0.4:40,64:1.0:0.4:120,69:1.5:0.8:80 --seed 7 --out "$out/chamber_melody"
+# Polyphony: A2, A3, E4 are overtones 1, 2, 3 of A2; then a close triad over the A1 drone.
+"$csrender" notes --voices 4 --notes 45:0:1.2:120,57:0:1.2:80,64:0:1.2:40 --wall off --seed 4 --at 0.6 --out "$out/chamber_poly_overtones"
+"$csrender" notes --voices 4 --notes 57:0:1.2:80,61:0:1.2:80,64:0:1.2:40 --wall drone --seed 4 --at 0.6 --out "$out/chamber_poly_drone_triad"
 # Drum hits, each in its own slot.
 "$csrender" hit kick  --out "$out/hit_kick"
 "$csrender" hit snare --out "$out/hit_snare"

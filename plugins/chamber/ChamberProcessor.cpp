@@ -55,6 +55,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ChamberProcessor::createLayo
           .withValueFromStringFunction(
               [](const juce::String& s) { return s.containsIgnoreCase("a") ? 0.29f : s.getFloatValue(); })));
 
+  layout.add(std::make_unique<juce::AudioParameterInt>(
+      id("voices"), "Voices", 1, 6, 1,
+      juce::AudioParameterIntAttributes().withStringFromValueFunction(
+          [](int v, int) { return v == 1 ? juce::String("Mono") : juce::String(v); })));
   layout.add(number("size", "Size", Range(0.0f, 1.0f, 0.01f), 0.9f, "", 2));
   layout.add(number("attack", "Attack", Range(0.0f, 50.0f, 0.1f), 0.0f, "ms", 1));
   Range release(0.0f, 2000.0f, 1.0f);
@@ -81,6 +85,7 @@ ChamberProcessor::ChamberProcessor()
   wallMode_ = raw("wallMode");
   wallRoot_ = raw("wallRoot");
   wallShare_ = raw("wallShare");
+  voices_ = raw("voices");
   size_ = raw("size");
   attack_ = raw("attack");
   release_ = raw("release");
@@ -103,8 +108,8 @@ const std::vector<cs::Preset>& ChamberProcessor::presets() {
   static const std::vector<cs::Preset> list = {
       {"Default",
        {{"type", 0}, {"seedMode", 0}, {"diffusion", 0.03f}, {"drift", 0.06f}, {"condense", 60}, {"wallMode", 1},
-        {"wallRoot", 33}, {"wallShare", 0.29f}, {"size", 0.9f}, {"attack", 0}, {"release", 0}, {"glide", 0},
-        {"bendRange", 2}, {"quality", 0}, {"gain", 0}}},
+        {"wallRoot", 33}, {"wallShare", 0.29f}, {"voices", 1}, {"size", 0.9f}, {"attack", 0}, {"release", 0},
+        {"glide", 0}, {"bendRange", 2}, {"quality", 0}, {"gain", 0}}},
       // A short bright track that speaks at once and slides between notes.
       {"Alpha lead",
        {{"type", 1}, {"seedMode", 0}, {"diffusion", 0.015f}, {"drift", 0.04f}, {"condense", 25}, {"wallMode", 0},
@@ -121,6 +126,11 @@ const std::vector<cs::Preset>& ChamberProcessor::presets() {
       {"Drone chamber",
        {{"type", 0}, {"seedMode", 0}, {"diffusion", 0.03f}, {"drift", 0.06f}, {"condense", 60}, {"wallMode", 2},
         {"wallRoot", 33}, {"wallShare", 0.29f}, {"size", 0.9f}, {"attack", 0}, {"release", 150}, {"glide", 0}}},
+      // Four voices over the A1 wall: chords as overtones of the drone.
+      {"Chamber choir",
+       {{"type", 0}, {"seedMode", 0}, {"diffusion", 0.02f}, {"drift", 0.04f}, {"condense", 40}, {"wallMode", 2},
+        {"wallRoot", 33}, {"wallShare", 0.29f}, {"voices", 4}, {"size", 0.9f}, {"attack", 0}, {"release", 120},
+        {"glide", 0}}},
   };
   return list;
 }
@@ -174,6 +184,7 @@ cs::ChamberParams ChamberProcessor::readParams() const noexcept {
   p.wallRoot = juce::roundToInt(wallRoot_->load());
   const float share = wallShare_->load();
   p.wallShare = share < 0.295f ? 0.0 : share;
+  p.voices = juce::roundToInt(voices_->load());
   p.size = size_->load();
   p.attackMs = attack_->load();
   p.releaseMs = release_->load();
@@ -225,7 +236,7 @@ juce::AudioProcessorEditor* ChamberProcessor::createEditor() {
   return new cs::Editor(*this, state_, scopeFeed_, "scopeDecay",
                         {{"Track", {"type", "seedMode", "diffusion", "drift", "condense"}},
                          {"Wall", {"wallMode", "wallRoot", "wallShare"}},
-                         {"Voice", {"size", "attack", "release", "glide", "bendRange"}},
+                         {"Voice", {"voices", "size", "attack", "release", "glide", "bendRange"}},
                          {"Output", {"quality", "gain", "scopeDecay"}}},
                         &presets());
 }

@@ -35,9 +35,9 @@ Universal binary (Apple Silicon and Intel), macOS 12 or later.
 
 ## CS Chamber (instrument)
 
-A monophonic instrument. Each note births a cloud-chamber track with a random shape and draws it once
-per period, so the picture repeats at the note's pitch. Last note wins; releasing it falls back to a
-key that is still held.
+Each note births a cloud-chamber track with a random shape and draws it once per period, so the picture
+repeats at the note's pitch. With Voices at Mono the last note wins, and releasing it falls back to a
+key that is still held. With more voices it plays chords: see Polyphony below.
 
 | Group | Parameter | What it does |
 | --- | --- | --- |
@@ -49,15 +49,36 @@ key that is still held.
 | Wall | Wall mode | Off: the track alone. Shared: wall and track drawn together each period, both at the note's pitch. Drone: the wall owns the period at a fixed root note and the track rings as one of its overtones; notes snap to the nearest overtone. |
 | | Wall root | The Drone's root note. A1 (55 Hz) by default. |
 | | Wall share p | Drone: the fraction of each period spent on the wall. Auto keeps it nearest 0.45. |
-| Voice | Size | Size of the picture, which is also the volume. |
+| Voice | Voices | Mono, or up to 6 keys at once sharing the beam. |
+| | Size | Size of the picture, which is also the volume. |
 | | Attack, Release | Grow and shrink times. Release 0 is a hard rest: silent within half a millisecond. |
-| | Glide | Slide time between overlapping notes. |
+| | Glide | Slide time between overlapping notes. Mono only. |
 | | Bend range | Pitch-wheel range in semitones. In Drone mode the wheel bends the root. |
 | Output | Quality | Scope-exact: no filtering, the truest picture. Clean: 4x oversampled with a gentle low-pass, less aliasing in the sound, 4 samples of latency. Corners round very slightly and the beam overshoots a little where it jumps. |
 | | Output gain | Trim. |
 | | Persistence | How long the built-in display glows. Does not affect the sound. |
 
-Presets: Alpha lead, Muon bass, Electron hiss, Drone chamber (also available as the host's programs).
+Presets: Alpha lead, Muon bass, Electron hiss, Drone chamber, Chamber choir (also available as the
+host's programs).
+
+### Polyphony
+
+There is one beam, so a chord cannot be several pictures at once. Instead each period is divided into
+slots, one per key, and each key's track is drawn in its slot. The whole picture still repeats at one
+rate, the chord's fundamental, and every note is snapped to the nearest overtone of it.
+
+- **Chords voiced on the overtones of their bass note** (A2, A3, E4, A4, C#5 ...) repeat at the bass
+  note and stay in tune with it.
+- **Any other chord** gets a fundamental below the bass: a close major triad on A3 is the 4th, 5th and
+  6th overtones of A1. You hear that low note, and the thirds are just rather than equal-tempered
+  (a major third lands 14 cents flat of the keyboard's).
+- **Dense or dissonant chords** need a very low fundamental, which flickers, or snap further: in the
+  worst case by up to a quarter tone.
+- Each added voice gets a smaller share of the period, so its track is dimmer and quieter.
+- The envelope is shared: lifting one key of a chord removes its track at once; Release applies when
+  the last key is lifted.
+- With the wall on, the wall takes a share of every period too. In Drone mode the fundamental is the
+  wall's root, or a whole fraction of it when the chord needs more room.
 
 A track lives about two seconds (alpha 2.0 s, muon 2.4 s, electron 1.8 s). With the wall on, the wall
 carries on alone after that. With the wall off, a note held longer goes silent.
