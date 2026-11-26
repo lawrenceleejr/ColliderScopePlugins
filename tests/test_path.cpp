@@ -91,7 +91,7 @@ TEST_CASE("Oscillator phase is exact, never rounded to whole samples", "[oscilla
   cs::TableOscillator osc;
   const double step = 880.0 / 48000.0;
   int periods = 0;
-  for (int n = 0; n < 48000; ++n) {
+  for (int n = 0; n < 48010; ++n) { // a little past 1 s: the 880th period ends on sample 48000
     const cs::XY p = osc.read(table);
     const double a = 2.0 * std::numbers::pi * 880.0 * n / 48000.0;
     REQUIRE_THAT(p.x, WithinAbs(std::cos(a), 1e-4));

@@ -70,7 +70,9 @@ TEST_CASE("Radial soft limit: knee 0.72, ceiling 0.86, angle kept", "[hits]") {
 }
 
 TEST_CASE("A slot ends once the hit falls below 12 % of its peak", "[hits]") {
-  const auto kick = cs::kickSpiral(48000.0, 0.8);
+  cs::KickParams quiet; // without the click, the peak is r0 exactly
+  quiet.click = 0.0;
+  const auto kick = cs::kickSpiral(48000.0, 0.8, 0.0, 3, quiet);
   const std::size_t n = cs::slotLength(kick);
   // 0.8 e^(-t / 50 ms) reaches 12 % at 106 ms.
   CHECK_THAT(static_cast<double>(n) / 48000.0, WithinAbs(0.050 * std::log(1.0 / 0.12), 0.002));
