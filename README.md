@@ -1,18 +1,19 @@
 # ColliderScope Plugins
 
-Four macOS audio plugins (VST3 + AU) for ColliderScope oscilloscope music, on one shared C++ core.
+Five macOS audio plugins (VST3 + AU) for ColliderScope oscilloscope music, on one shared C++ core.
 In XY mode left = X and right = Y, so the sound is the picture.
 
 - **CS Chamber**, a MIDI instrument. Each note births a cloud-chamber track drawn as an XY loop pitched to the note.
 - **CS Bubble**, a MIDI instrument. A bubble chamber: tracks curl in a magnetic field and are drawn as rows of growing bubbles.
 - **CS Orbital**, a MIDI instrument. Surfaces: wireframes of hydrogen orbital isosurfaces, 1s to 4f, spinning.
+- **CS Script**, a MIDI instrument. Text and equations, typed in a LaTeX-like syntax and drawn with single-stroke letters.
 - **CS Mux**, an effect. It serializes two XY sources (main input and sidechain) so both pictures show without distorting each other.
 
-All four are built. How to install, wire and play them is in [docs/manual.md](docs/manual.md).
+All five are built. How to install, wire and play them is in [docs/manual.md](docs/manual.md).
 
 What is checked on every push, by CI on a macOS runner:
 
-- Pitch within 1 cent, pictures within r <= 0.95, hard rests below -80 dBFS within 0.5 ms (the three instruments).
+- Pitch within 1 cent, pictures within r <= 0.95, hard rests below -80 dBFS within 0.5 ms (the four instruments).
 - No distortion in Interleave and Slot, reported latency equal to measured latency in Cycle-lock (CS Mux).
 - No allocation on the audio thread (malloc hook), and under 5 % of one core for the audio work.
 - pluginval at strictness 5 on the VST3s, auval on the AUs.
@@ -28,6 +29,7 @@ plugins/chamber/    CS Chamber
 plugins/mux/        CS Mux
 plugins/bubble/     CS Bubble
 plugins/orbital/    CS Orbital
+plugins/script/     CS Script
 plugins/common/     shared editor, scope display, look and CMake settings
 tools/csrender/     command-line renderer
 tools/uisnap/       saves a picture of a plugin's window
@@ -69,6 +71,9 @@ the light of the render. `csrender --help` lists every option. `tools/render_tes
 as the `test-renders` artifact.
 
 ## Licence note
+
+The letters CS Script draws are the Hershey fonts; their acknowledgement is in
+`core/third_party/hershey/README.md`.
 
 For personal use for now: there is no licence file. JUCE is dual-licensed GPL/commercial, so sharing
 the plugins means either releasing this code under the GPL or buying a JUCE licence first.

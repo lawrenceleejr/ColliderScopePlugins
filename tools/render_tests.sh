@@ -29,6 +29,13 @@ done
 for orbital in 1s 2s 2pz 2px 3dz2 3dxz 4fz3 4fxz2; do
   "$csrender" notes --instrument orbital --orbital "$orbital" --notes 57:0:1.2:80 --at 0.6 --out "$out/orbital_$orbital"
 done
+# CS Script: text and equations.
+"$csrender" notes --instrument script --text 'E = mc^2' --notes 57:0:0.6:80 --at 0.4 --out "$out/script_emc2"
+"$csrender" notes --instrument script --text '\frac{\partial\psi}{\partial t} = \hat{H}\psi' --notes 57:0:0.6:80 --at 0.4 --out "$out/script_schrodinger"
+"$csrender" notes --instrument script --text '\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}' --notes 57:0:0.6:80 --at 0.4 --out "$out/script_gaussian"
+"$csrender" notes --instrument script --text 'ColliderScope\\\alpha\beta\gamma \to \Omega' --slant 0.2 --write 500 --notes 45:0:0.8:80 --at 0.7 --out "$out/script_two_lines"
+# Timing: the same orbital with even and with harmonic timing.
+"$csrender" notes --instrument orbital --orbital 3dxz --timing even --notes 57:0:1.2:80 --at 0.6 --out "$out/orbital_3dxz_even"
 # Drum hits, each in its own slot.
 "$csrender" hit kick  --out "$out/hit_kick"
 "$csrender" hit snare --out "$out/hit_snare"

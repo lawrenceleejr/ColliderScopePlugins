@@ -1,7 +1,7 @@
 # ColliderScope Plugins: manual
 
-Four plugins for oscilloscope music: three instruments (CS Chamber, CS Bubble, CS Orbital) and one
-effect (CS Mux). In XY mode the left channel is X and the right channel is Y, so the sound is the
+Five plugins for oscilloscope music: four instruments (CS Chamber, CS Bubble, CS Orbital, CS Script)
+and one effect (CS Mux). In XY mode the left channel is X and the right channel is Y, so the sound is the
 picture: every setting below changes both.
 
 ## Install
@@ -11,8 +11,8 @@ and unzip it.
 
 | Plugin file | Goes in |
 | --- | --- |
-| the four `.vst3` bundles | `~/Library/Audio/Plug-Ins/VST3` |
-| the four `.component` bundles | `~/Library/Audio/Plug-Ins/Components` |
+| the five `.vst3` bundles | `~/Library/Audio/Plug-Ins/VST3` |
+| the five `.component` bundles | `~/Library/Audio/Plug-Ins/Components` |
 
 The builds are unsigned, so clear the quarantine flag once after copying, then rescan in your DAW:
 
@@ -87,7 +87,7 @@ carries on alone after that. With the wall off, a note held longer goes silent.
 
 ### Timing
 
-All three instruments have this control.
+All four instruments have this control.
 
 - **Even** spreads the period along the path by length, so every line is equally bright. It takes
   no account of the sound.
@@ -101,7 +101,7 @@ All three instruments have this control.
 What it buys depends on how much there is to rearrange. Measured as the share of the sound's energy
 in consonant harmonics: CS Orbital, with many wires, goes from 0.85 to 0.89 and improves on four notes
 in five; CS Bubble and CS Chamber barely change, because a row of bubbles or a single track leaves
-little choice. The price is brightness: a stroke rounded up to a whole slot is drawn slower, and so
+little choice. CS Script keeps its strokes in reading order and only chooses the grid. The price is brightness: a stroke rounded up to a whole slot is drawn slower, and so
 brighter, than one rounded down.
 
 ## CS Bubble (instrument)
@@ -141,6 +141,36 @@ four-leaf clover, 4f more lobes still. Monophonic, with the same voice controls 
 | | Tilt | How far the axis leans toward you. At 0 you look from the side, at 90 down the axis. |
 
 Presets: s sine, p lead, d pad, f bell. The wireframe is see-through: wires on the far side show too.
+
+## CS Script (instrument)
+
+Text and equations. Type a line into the Text field and each note draws it with single-stroke
+letters, fitted to the screen and drawn in reading order. Monophonic, with the same voice controls as
+CS Chamber. The text is saved with the project; it is not a parameter, so it cannot be automated.
+
+The Text field takes a small part of LaTeX's syntax:
+
+| To get | Type |
+| --- | --- |
+| Superscripts and subscripts | `x^2`, `a_i`, `e^{i\pi}`, `\int_0^\infty` |
+| Fractions and roots | `\frac{a}{b}`, `\sqrt{x^2 + y^2}` |
+| Greek letters | `\alpha` ... `\omega`, and `\Gamma \Delta \Theta \Lambda \Xi \Pi \Sigma \Phi \Psi \Omega` |
+| Symbols | `\pm \mp \times \cdot \div \leq \geq \neq \equiv \approx \propto \infty \partial \nabla \int \sum \prod \to \leftarrow \uparrow \downarrow \in \subset \supset \cup \cap \exists \perp \parallel \angle \therefore \hbar` |
+| Accents | `\vec{a}`, `\hat{H}`, `\bar{x}`, `\dot{q}`, `\tilde{u}` |
+| Spaces and a new line | `\,`, `\;`, `\quad`, and `\\` |
+
+Braces group, `$` signs are ignored, and a command it does not know is drawn as its name, so a typo
+shows. It is not a full LaTeX: there are no matrices, no `\left(` ... `\right)` sizing (the brackets
+are drawn at normal size), no big operators with limits above and below, and one font.
+
+| Group | Parameter | What it does |
+| --- | --- | --- |
+| Writing | Write time | At the start of each note the line is written out from left to right over this time. 0 shows it all at once. |
+| | Slant | Leans the letters. 0.2 is about italic. |
+
+A line of text is many short strokes with jumps between them, so the faint jump lines show more than
+on the other instruments, and long lines are small. Short texts and single equations read best.
+The letters are the Hershey fonts (see `core/third_party/hershey/README.md`).
 
 ## CS Mux (effect)
 
@@ -191,7 +221,7 @@ Use the VST3 versions: Live sends MIDI to VST3 effects but not to Audio Unit eff
 
 - The built-in display gathers light 60 times a second and redraws 30 times a second.
 
-- CS Bubble and CS Orbital are monophonic.
+- CS Bubble, CS Orbital and CS Script are monophonic.
 - Played live, a note starts when its first picture arrives from a background thread, up to a
   millisecond or two after the key. Offline bounces are sample-exact.
 - Cycle-lock changes its reported latency when A changes pitch. Some hosts pause briefly to re-plan.
