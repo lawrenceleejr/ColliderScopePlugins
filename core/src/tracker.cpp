@@ -229,6 +229,12 @@ TrackerFrame trackerFrame(const TrackerParams& params, double age, double energy
   Camera above = camera;
   above.elevation = std::min(89.0, camera.elevation + 35.0);
   const View moduleView(above, 0.88);
+  // Exploding, the camera drops back to the side, so the layers are seen to lift apart.
+  auto explodedView = [&](double explode) {
+    Camera c = camera;
+    c.elevation = above.elevation + (camera.elevation - above.elevation) * explode;
+    return View(c, 0.88);
+  };
   // The tracker, scaled so its far corners reach 0.85.
   const double s = 0.85 / std::hypot(kDiscZ[4], kDiscOuter);
   // The module that is shown: in layer 5, a quarter of the way along, turned to face out.
@@ -244,7 +250,8 @@ TrackerFrame trackerFrame(const TrackerParams& params, double age, double energy
     break;
   case TrackerStage::Exploded:
     frame.explode = ease(within / 0.7);
-    drawModule(params.module, frame.explode, params.detail, {}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 1.8, moduleView, frame.strokes);
+    drawModule(params.module, frame.explode, params.detail, {}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 1.8, explodedView(frame.explode),
+               frame.strokes);
     break;
   case TrackerStage::Tracker: {
     // Put back together, then flown to its place as the tracker draws in round it.
@@ -255,9 +262,8 @@ TrackerFrame trackerFrame(const TrackerParams& params, double age, double energy
     const Vec3 ex = unit(lerp({1, 0, 0}, {1, 0, 0}, z)), ey = unit(lerp({0, 1, 0}, round, z)), ez = unit(lerp({0, 0, 1}, outward, z));
     const double scale = 1.8 + (size - 1.8) * z;
     drawTracker(params.detail * 0.6, z, view, s, frame.strokes);
-    Camera between = camera;
-    between.elevation = above.elevation + (camera.elevation - above.elevation) * z;
-    const View travel(between, 0.88);
+    // Coming back together it is seen from the side, as when it came apart.
+    const View travel = explodedView(1.0);
     for (int copy = 0; copy < (z > 0.95 ? 3 : 1); ++copy) // in place, drawn over three times: it stands out
       drawModule(params.module, frame.explode, z > 0.5 ? 0.0 : params.detail, centre, ex, ey, ez, scale, travel, frame.strokes);
     break;
