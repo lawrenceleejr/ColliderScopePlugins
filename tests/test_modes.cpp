@@ -212,6 +212,93 @@ TEST_CASE("Function: t moves the surface", "[function]") {
   CHECK(peakRadius(r) <= 0.95);
 }
 
+TEST_CASE("Function sheets: the surface filled in with shaded scanlines", "[function]") {
+  cs::SurfaceParams p;
+  p.style = cs::SurfaceParams::Style::Sheet;
+  cs::Expression hill;
+  REQUIRE(hill.compile("1.5 * gauss(r / 1.2)"));
+
+  SECTION("many more lines than the wire mesh, and on the screen") {
+    const cs::Path sheet = cs::surfaceSheet(hill, p, 0.0, 0.0, 60);
+    std::size_t runs = 0;
+    for (const cs::PathPoint& q : sheet) {
+      runs += !q.pen;
+      REQUIRE(std::hypot(q.x, q.y) <= 0.95);
+    }
+    CHECK(runs >= 60); // a run or more per scanline: some are split where the hill hides them
+    p.style = cs::SurfaceParams::Style::Wires;
+    p.lines = 14;
+    CHECK(cs::surfaceStrokes(hill, p, 0.0, 0.0).size() < runs);
+  }
+  SECTION("shading: the side facing the light dwells longer than the side away from it") {
+    p.shading = 1.0;
+    p.camera = {0.0, 30.0, 0.0, 0.0};
+    const cs::Path sheet = cs::surfaceSheet(hill, p, 0.0, 0.0, 60);
+    float lo = 10.0f, hi = 0.0f;
+    for (const cs::PathPoint& q : sheet)
+      if (q.pen) {
+        lo = std::min(lo, q.weight);
+        hi = std::max(hi, q.weight);
+      }
+    CHECK(lo < 0.25f);
+    CHECK(hi > 0.6f);
+    p.shading = 0.0; // flat: one weight everywhere
+    for (const cs::PathPoint& q : cs::surfaceSheet(hill, p, 0.0, 0.0, 60))
+      REQUIRE(q.weight == 1.0f);
+  }
+  SECTION("to and fro: consecutive scanlines run opposite ways") {
+    cs::Expression flat;
+    REQUIRE(flat.compile("0"));
+    const cs::Path sheet = cs::surfaceSheet(flat, p, 0.0, 0.0, 10);
+    std::vector<double> directions;
+    for (std::size_t i = 0; i < sheet.size(); ++i)
+      if (!sheet[i].pen && i + 1 < sheet.size())
+        directions.push_back(sheet[i + 1].x - sheet[i].x);
+    REQUIRE(directions.size() == 10);
+    for (std::size_t i = 1; i < directions.size(); ++i)
+      CHECK(directions[i] * directions[i - 1] < 0.0);
+  }
+  SECTION("interlaced: each frame draws every n-th line, and the frames together draw them all") {
+    std::size_t together = 0;
+    for (int offset = 0; offset < 3; ++offset) {
+      std::size_t runs = 0;
+      cs::Expression flat;
+      REQUIRE(flat.compile("0"));
+      for (const cs::PathPoint& q : cs::surfaceSheet(flat, p, 0.0, 0.0, 30, offset, 3))
+        runs += !q.pen;
+      CHECK(runs == 10);
+      together += runs;
+    }
+    CHECK(together == 30);
+  }
+}
+
+TEST_CASE("Function sheets: as many scanlines as a period has room for", "[function]") {
+  cs::SurfaceParams p;
+  p.style = cs::SurfaceParams::Style::Sheet;
+  p.scanlines = 160;
+  cs::SurfaceEngine voice;
+  voice.prepare(kSampleRate);
+  CHECK(voice.source().sheetLines(p, 33) > voice.source().sheetLines(p, 57)); // a low note has a long period
+  CHECK(voice.source().sheetLines(p, 33) == 62);                              // 872 samples / 14
+  CHECK(voice.source().sheetLines(p, 93) == 6);                               // the least
+  p.scanlines = 20;
+  CHECK(voice.source().sheetLines(p, 33) == 20); // and never more than asked for
+}
+
+TEST_CASE("Function sheets: pitch, picture and hard rest", "[function][acceptance]") {
+  cs::SurfaceParams p;
+  p.style = cs::SurfaceParams::Style::Sheet;
+  p.setFunction("1.5 * gauss(r / 1.2)");
+  p.spin = 0.0;
+  checkPitchAndRest<cs::SurfaceEngine>(p); // interlace 1: the same picture every period
+  p.voice.size = 1.0;
+  p.spin = 60.0;
+  p.interlace = 3;
+  cs::SurfaceEngine voice;
+  CHECK(peakRadius(play(voice, p, 45, 80, 0.5, 0.0)) <= 0.95);
+}
+
 // ------------------------------------------------------------------- Collision
 
 TEST_CASE("Collision: tracks curve by charge and momentum", "[collision]") {

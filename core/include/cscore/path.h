@@ -27,6 +27,10 @@ struct PathPoint {
   double x = 0.0;
   double y = 0.0;
   bool pen = true;
+  // Time spent per unit length on the segment arriving here, relative to 1.
+  // The beam dwells longer, and so draws brighter, where it is higher: this
+  // is how a filled sheet is shaded.
+  float weight = 1.0f;
 };
 using Path = std::vector<PathPoint>;
 

@@ -254,6 +254,12 @@ TEST_CASE("CPU: CS Bubble and CS Orbital under 5 % of one core", "[realtime][acc
   surface.setFunction("sin(3 * r - 4 * t) / (1 + r)");
   surface.lines = 32;
   const double function = cpuPercent<cs::SurfaceEngine>(surface);
+  surface.style = cs::SurfaceParams::Style::Sheet;
+  surface.scanlines = 160;
+  surface.interlace = 4;
+  const double sheet = cpuPercent<cs::SurfaceEngine>(surface);
+  WARN("function as a sheet (160 lines, interlaced 4): " << sheet << " % of a core");
+  CHECK(sheet < 5.0);
   cs::CollisionParams busy;
   busy.event = cs::CollisionEvent::Multijet;
   busy.pileup = 1.0;

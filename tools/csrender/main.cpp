@@ -23,6 +23,7 @@ const char* kUsage =
     "  csrender notes --out PREFIX [--notes NOTE:START:DUR[:VEL],...] [options]\n"
     "      Play a note list through an instrument: --instrument chamber (default), bubble, orbital, script, function, collision or mesh.\n"
     "      function:  --function 'sin(3*r - 4*t) / (1 + r)'   --range R   --height H   --lines N   --hidden 0|1   --spin DEG/S\n"
+    "                 --style wires|sheet   --scanlines N   --shading S   --interlace N\n"
     "      collision: --event auto|minbias|dijet|zmumu|multijet|fourmuon|random   --field F   --pileup P   --detector 0|1   --form MS   --3d 0|1\n"
     "      scenes:    --scene tracking-planes|wire-chamber|calorimeter-shower|cherenkov-rings|spark-chamber|betatron|\n"
     "                 cyclotron|bunch-crossings|flux-tube|higgs-potential|neutrino-oscillation|eightfold-way (or 1-12)\n"
@@ -237,6 +238,10 @@ csio::Audio renderFunction(const Args& args, double sampleRate) {
   p.lines = static_cast<int>(args.num("lines", p.lines));
   p.hidden = args.num("hidden", 1) != 0;
   p.spin = args.num("spin", p.spin);
+  p.style = args.str("style", "wires") == "sheet" ? cs::SurfaceParams::Style::Sheet : cs::SurfaceParams::Style::Wires;
+  p.scanlines = static_cast<int>(args.num("scanlines", p.scanlines));
+  p.shading = args.num("shading", p.shading);
+  p.interlace = static_cast<int>(args.num("interlace", p.interlace));
   readCamera(args, p.camera);
   cs::SurfaceEngine voice;
   voice.prepare(sampleRate);

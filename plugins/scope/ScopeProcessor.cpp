@@ -58,6 +58,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout layout() {
   l.add(num("f_elevation", "Function: Elevation", Range(0.0f, 90.0f, 1.0f), 30.0f, "deg", 0));
   l.add(num("f_perspective", "Function: Perspective", Range(0.0f, 1.0f, 0.01f), 0.2f, "", 2));
   l.add(num("f_spin", "Function: Spin", Range(-180.0f, 180.0f, 1.0f), 15.0f, "deg/s", 0));
+  l.add(choice("f_style", "Function: Style", {"Wires", "Sheet"}, 0));
+  l.add(whole("f_scanlines", "Function: Scanlines", 8, 160, 64));
+  l.add(num("f_shading", "Function: Shading", Range(0.0f, 1.0f, 0.01f), 0.7f, "", 2));
+  l.add(whole("f_interlace", "Function: Interlace", 1, 4, 1));
 
   l.add(choice("c_event", "Collision: Event",
                {"Auto", "Minimum bias", "Dijet", "Z to muons", "Multijet", "Four muons", "Random"}, 0));
@@ -133,7 +137,8 @@ public:
           "m_edges",    "c_view",  "c_azimuth",  "c_elevation", "c_perspective", "c_spin",     "k_diagram",     "k_form",
           "k_wiggle",   "k_motion", "k_arrows",   "g_scene",    "g_seedMode",  "g_form",       "g_speed",       "g_detail",
           "g_azimuth",  "g_elevation", "g_perspective", "g_spin", "t_stage",     "t_module",     "t_speed",       "t_detail",
-          "t_seedMode", "t_azimuth", "t_elevation", "t_perspective", "t_spin"})
+          "t_seedMode", "t_azimuth", "t_elevation", "t_perspective", "t_spin", "f_style", "f_scanlines", "f_shading",
+          "f_interlace"})
       values_[id] = raw(id);
     setText(kDefaultText);
     setFunction(kDefaultFunction);
@@ -209,7 +214,8 @@ private:
     case cs::Instrument::Function:
       panel.addText("z = f(x, y, t)", state_.state.getProperty("function", kDefaultFunction).toString(),
                     [this](const juce::String& text) { setFunction(text); });
-      cs::Editor::addGroups(panel, {{"Surface", {"f_range", "f_height", "f_lines", "f_hidden"}},
+      cs::Editor::addGroups(panel, {{"Surface", {"f_range", "f_height", "f_hidden"}},
+                                    {"Drawing", {"f_style", "f_lines", "f_scanlines", "f_shading", "f_interlace"}},
                                     {"Camera", {"f_azimuth", "f_elevation", "f_perspective", "f_spin"}}});
       break;
     case cs::Instrument::Collision:
@@ -286,6 +292,10 @@ private:
     p.surface.hidden = i("f_hidden") == 1;
     p.surface.camera = {v("f_azimuth"), v("f_elevation"), 0.0, v("f_perspective")};
     p.surface.spin = v("f_spin");
+    p.surface.style = static_cast<cs::SurfaceParams::Style>(i("f_style"));
+    p.surface.scanlines = i("f_scanlines");
+    p.surface.shading = v("f_shading");
+    p.surface.interlace = i("f_interlace");
 
     p.collision.event = static_cast<cs::CollisionEvent>(i("c_event"));
     p.collision.seedMode = static_cast<cs::CollisionSeed>(i("c_seedMode"));
@@ -352,6 +362,10 @@ private:
         {"Function: ripples",
          {{"instrument", 3}, {"f_range", 3.0f}, {"f_height", 0.6f}, {"f_lines", 14}, {"f_hidden", 1}, {"f_azimuth", 35},
           {"f_elevation", 30}, {"f_perspective", 0.2f}, {"f_spin", 15}, {"release", 200}}},
+        {"Function: lit sheet",
+         {{"instrument", 3}, {"f_style", 1}, {"f_scanlines", 64}, {"f_shading", 0.8f}, {"f_interlace", 2}, {"f_range", 3.0f},
+          {"f_height", 0.6f}, {"f_hidden", 1}, {"f_azimuth", 35}, {"f_elevation", 30}, {"f_perspective", 0.2f}, {"f_spin", 10},
+          {"release", 200}}},
         {"Collision: by velocity",
          {{"instrument", 4}, {"c_event", 0}, {"c_seedMode", 0}, {"c_field", 0.5f}, {"c_pileup", 0.3f}, {"c_detector", 1},
           {"c_form", 60}, {"release", 0}}},

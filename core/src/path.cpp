@@ -81,7 +81,7 @@ void resamplePath(const Path& path, std::span<XY> out, Vec2 closeTo, double penU
   const std::size_t k = path.size();
   // Point i for i < k is path[i]; point k is closeTo, reached by a jump.
   auto point = [&](std::size_t i) { return i < k ? Vec2{path[i].x, path[i].y} : closeTo; };
-  auto weight = [&](std::size_t i) { return (i < k && path[i].pen) ? 1.0 : penUpWeight; };
+  auto weight = [&](std::size_t i) { return (i < k && path[i].pen) ? static_cast<double>(path[i].weight) : penUpWeight; };
 
   std::vector<double> s(k + 1);
   s[0] = 0.0;

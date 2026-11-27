@@ -218,6 +218,26 @@ field; where a formula has no value (a division by zero, say) the surface is put
 | | Perspective | 0 is a flat, drawing-board view; higher is a closer, wider lens. |
 | | Spin | Turning rate about the vertical axis. |
 
+| Drawing | Style | Wires: a mesh of lines each way. Sheet: the surface filled in, as below. |
+| | Wires | Wires style: how many wires each way. |
+| | Scanlines | Sheet style: the most scanlines. |
+| | Shading | Sheet style: how strongly the light shades the sheet. 0 is flat. |
+| | Interlace | Sheet style: draw every n-th scanline each frame. |
+
+**Sheets.** A scope can only draw lines, so a filled surface is drawn as a raster: the beam sweeps to
+and fro across it in close scanlines, each one hidden where the surface in front covers it. The
+shading is done with dwell time, which is what makes a trace bright: where the surface faces the
+lamp (above and to the left) the beam slows down and draws brightly, and where it turns away the
+beam hurries and draws dimly. The light is fixed to the surface, so it moves with Spin.
+
+A sheet needs time to draw. A period of a low note is long, with room for many scanlines; a high
+note has few samples a period and the sheet thins to a handful of lines (Scanlines is a ceiling:
+the instrument uses at most one line per 14 samples of the period, so about 60 at A1 and 15 at A3).
+Interlace trades this back: with Interlace at 2 to 4, each frame draws a different share of the
+lines, and the scope's persistence blends them into the whole sheet. The cost is in the sound: the
+picture now repeats every two to four frames, which adds a flutter under the note, and on a scope
+with short persistence the sheet will shimmer. For the fullest sheet, play low and interlace.
+
 Hidden lines are found by a quick method that is right for surfaces seen from above and can leave
 small gaps or stray ends where wires cross near an edge.
 
