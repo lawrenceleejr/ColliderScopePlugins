@@ -81,4 +81,14 @@ done
 "$csrender" mux "$out/chamber_melody.wav" "$out/in_square.wav" --mode slot --sensitivity 0 --hits kick:1.0 --at 1.05 --out "$out/mux_slot_kick"
 # Round trip: a picture drawn from a WAV on disk.
 "$csrender" view "$out/chamber_alpha.wav" --at 0.6 --out "$out/view_roundtrip"
+# Sheets: every instrument filled in, low enough (A1) for a full raster.
+"$csrender" notes --style sheet --instrument bubble --type pair --seed 5 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_bubble"
+"$csrender" notes --style sheet --instrument orbital --orbital 3dz2 --spin 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_orbital"
+"$csrender" notes --style sheet --instrument script --text 'E = mc^2' --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_script"
+"$csrender" notes --style sheet --instrument function --function 'gauss(r/1.5) * cos(3*x)' --spin 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_function"
+"$csrender" notes --style sheet --instrument collision --event dijet --seed 3 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_collision"
+"$csrender" notes --style sheet --instrument mesh --spin 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_mesh"
+"$csrender" notes --style sheet --instrument feynman --diagram 9 --motion 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_feynman"
+"$csrender" notes --style sheet --instrument scenes --scene higgs-potential --spin 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_higgs"
+"$csrender" notes --style sheet --instrument tracker --stage exploded --spin 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_cms"
 ls -la "$out"

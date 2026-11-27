@@ -121,6 +121,49 @@ instrument and switch to it. A host sees every instrument's parameters at once, 
 Three things are not parameters, because hosts automate numbers and not text or files: Script's text,
 Function's formula and Mesh's model. They are saved with the project.
 
+### Sheets
+
+Every instrument can draw its picture filled in rather than as lines. A scope can only draw lines,
+so a filled shape is drawn as a raster: the beam sweeps to and fro across it in close scanlines,
+each one hidden where something nearer covers it. Shading is done with dwell time, which is what
+makes a trace bright: where a surface faces the lamp (above and to the left) the beam slows and
+draws brightly, and where it turns away the beam hurries and draws dimly. The lamp is fixed to the
+picture, so it turns with Spin.
+
+What gets filled depends on the instrument:
+
+| Instrument | Filled | Lines drawn over the fill |
+| --- | --- | --- |
+| Bubble | The closed rings, faintly | The tracks of bubbles |
+| Orbital | The lobes, as lit surfaces | The wires |
+| Script | Every stroke, as a band of Line width | None |
+| Function | The surface, lit | None |
+| Collision | The detector, dimly; each track as a bright band | The tracks |
+| Mesh | Every face turned to you, lit flat | The edges |
+| Feynman | Every line, as a band | None |
+| Scenes | Closed shapes; the Higgs potential as a lit surface | The scene's lines |
+| CMS tracker | The modules and layers | The tracks |
+
+| Group | Parameter | What it does |
+| --- | --- | --- |
+| Sheet | Style | Lines: the picture as lines. Sheet: filled in. |
+| | Scanlines | The most scanlines across the picture. |
+| | Shading | How strongly the lamp shades a surface. 0 is flat. |
+| | Interlace | Draw every n-th scanline each frame. |
+| | Fill share | How much of each period goes to the fill; the rest draws the lines over it. |
+| | Line width | How wide a line is when it is filled as a band. |
+
+A sheet needs time to draw. A period of a low note is long, with room for many scanlines; a high
+note has few samples a period and the sheet thins to a handful of lines (Scanlines is a ceiling:
+the instrument uses at most one line per 14 samples of the period, so about 60 at A1 and 15 at A3).
+Interlace trades this back: with Interlace at 2 to 4, each frame draws a different share of the
+lines, and the scope's persistence blends them into the whole sheet. The cost is in the sound: the
+picture now repeats every two to four frames, which adds a flutter under the note, and on a scope
+with short persistence the sheet will shimmer. For the fullest sheet, play low and interlace.
+
+A sheet sounds different from lines: a raster is a buzz rich in high harmonics, and the
+lines drawn over it add the picture's own tone. Fill share sets the balance.
+
 ### Bubble
 
 A bubble chamber. Each note is an event: a charged particle crosses a magnetic field, losing energy as
@@ -218,25 +261,7 @@ field; where a formula has no value (a division by zero, say) the surface is put
 | | Perspective | 0 is a flat, drawing-board view; higher is a closer, wider lens. |
 | | Spin | Turning rate about the vertical axis. |
 
-| Drawing | Style | Wires: a mesh of lines each way. Sheet: the surface filled in, as below. |
-| | Wires | Wires style: how many wires each way. |
-| | Scanlines | Sheet style: the most scanlines. |
-| | Shading | Sheet style: how strongly the light shades the sheet. 0 is flat. |
-| | Interlace | Sheet style: draw every n-th scanline each frame. |
-
-**Sheets.** A scope can only draw lines, so a filled surface is drawn as a raster: the beam sweeps to
-and fro across it in close scanlines, each one hidden where the surface in front covers it. The
-shading is done with dwell time, which is what makes a trace bright: where the surface faces the
-lamp (above and to the left) the beam slows down and draws brightly, and where it turns away the
-beam hurries and draws dimly. The light is fixed to the surface, so it moves with Spin.
-
-A sheet needs time to draw. A period of a low note is long, with room for many scanlines; a high
-note has few samples a period and the sheet thins to a handful of lines (Scanlines is a ceiling:
-the instrument uses at most one line per 14 samples of the period, so about 60 at A1 and 15 at A3).
-Interlace trades this back: with Interlace at 2 to 4, each frame draws a different share of the
-lines, and the scope's persistence blends them into the whole sheet. The cost is in the sound: the
-picture now repeats every two to four frames, which adds a flutter under the note, and on a scope
-with short persistence the sheet will shimmer. For the fullest sheet, play low and interlace.
+| Drawing | Wires | How many wires each way, when Sheet is Lines. |
 
 Hidden lines are found by a quick method that is right for surfaces seen from above and can leave
 small gaps or stray ends where wires cross near an edge.

@@ -58,10 +58,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout layout() {
   l.add(num("f_elevation", "Function: Elevation", Range(0.0f, 90.0f, 1.0f), 30.0f, "deg", 0));
   l.add(num("f_perspective", "Function: Perspective", Range(0.0f, 1.0f, 0.01f), 0.2f, "", 2));
   l.add(num("f_spin", "Function: Spin", Range(-180.0f, 180.0f, 1.0f), 15.0f, "deg/s", 0));
-  l.add(choice("f_style", "Function: Style", {"Wires", "Sheet"}, 0));
-  l.add(whole("f_scanlines", "Function: Scanlines", 8, 160, 64));
-  l.add(num("f_shading", "Function: Shading", Range(0.0f, 1.0f, 0.01f), 0.7f, "", 2));
-  l.add(whole("f_interlace", "Function: Interlace", 1, 4, 1));
+  // Sheets: shared by every instrument.
+  l.add(choice("sheet", "Sheet: Style", {"Lines", "Sheet"}, 0));
+  l.add(whole("scanlines", "Sheet: Scanlines", 8, 160, 64));
+  l.add(num("shading", "Sheet: Shading", Range(0.0f, 1.0f, 0.01f), 0.7f, "", 2));
+  l.add(whole("interlace", "Sheet: Interlace", 1, 4, 1));
+  l.add(num("fillShare", "Sheet: Fill share", Range(0.2f, 0.95f, 0.01f), 0.6f, "", 2));
+  l.add(num("lineWidth", "Sheet: Line width", Range(0.005f, 0.08f, 0.001f), 0.025f, "", 3));
 
   l.add(choice("c_event", "Collision: Event",
                {"Auto", "Minimum bias", "Dijet", "Z to muons", "Multijet", "Four muons", "Random"}, 0));
@@ -137,8 +140,8 @@ public:
           "m_edges",    "c_view",  "c_azimuth",  "c_elevation", "c_perspective", "c_spin",     "k_diagram",     "k_form",
           "k_wiggle",   "k_motion", "k_arrows",   "g_scene",    "g_seedMode",  "g_form",       "g_speed",       "g_detail",
           "g_azimuth",  "g_elevation", "g_perspective", "g_spin", "t_stage",     "t_module",     "t_speed",       "t_detail",
-          "t_seedMode", "t_azimuth", "t_elevation", "t_perspective", "t_spin", "f_style", "f_scanlines", "f_shading",
-          "f_interlace"})
+          "t_seedMode", "t_azimuth", "t_elevation", "t_perspective", "t_spin", "sheet", "scanlines", "shading",
+          "interlace", "fillShare", "lineWidth"})
       values_[id] = raw(id);
     setText(kDefaultText);
     setFunction(kDefaultFunction);
@@ -215,7 +218,7 @@ private:
       panel.addText("z = f(x, y, t)", state_.state.getProperty("function", kDefaultFunction).toString(),
                     [this](const juce::String& text) { setFunction(text); });
       cs::Editor::addGroups(panel, {{"Surface", {"f_range", "f_height", "f_hidden"}},
-                                    {"Drawing", {"f_style", "f_lines", "f_scanlines", "f_shading", "f_interlace"}},
+                                    {"Drawing", {"f_lines"}},
                                     {"Camera", {"f_azimuth", "f_elevation", "f_perspective", "f_spin"}}});
       break;
     case cs::Instrument::Collision:
@@ -241,7 +244,9 @@ private:
                                     {"Edges", {"m_crease", "m_cull", "m_edges"}}});
       break;
     }
-    cs::Editor::addGroups(panel, {{"Voice", kVoiceGroup}, {"Output", kOutputGroup}});
+    cs::Editor::addGroups(panel, {{"Sheet", {"sheet", "scanlines", "shading", "interlace", "fillShare", "lineWidth"}},
+                                  {"Voice", kVoiceGroup},
+                                  {"Output", kOutputGroup}});
   }
 
   void chooseMesh(cs::ParamPanel& panel) {
@@ -263,6 +268,12 @@ private:
   cs::MultiParams readParams() const noexcept override {
     cs::MultiParams p;
     p.voice = readVoice();
+    p.voice.sheet.style = static_cast<cs::SheetParams::Style>(i("sheet"));
+    p.voice.sheet.scanlines = i("scanlines");
+    p.voice.sheet.shading = v("shading");
+    p.voice.sheet.interlace = i("interlace");
+    p.voice.sheet.fillShare = v("fillShare");
+    p.voice.sheet.width = v("lineWidth");
     p.instrument = static_cast<cs::Instrument>(instrument());
 
     p.bubble.type = static_cast<cs::BubbleType>(i("b_type"));
@@ -292,10 +303,6 @@ private:
     p.surface.hidden = i("f_hidden") == 1;
     p.surface.camera = {v("f_azimuth"), v("f_elevation"), 0.0, v("f_perspective")};
     p.surface.spin = v("f_spin");
-    p.surface.style = static_cast<cs::SurfaceParams::Style>(i("f_style"));
-    p.surface.scanlines = i("f_scanlines");
-    p.surface.shading = v("f_shading");
-    p.surface.interlace = i("f_interlace");
 
     p.collision.event = static_cast<cs::CollisionEvent>(i("c_event"));
     p.collision.seedMode = static_cast<cs::CollisionSeed>(i("c_seedMode"));
@@ -363,7 +370,7 @@ private:
          {{"instrument", 3}, {"f_range", 3.0f}, {"f_height", 0.6f}, {"f_lines", 14}, {"f_hidden", 1}, {"f_azimuth", 35},
           {"f_elevation", 30}, {"f_perspective", 0.2f}, {"f_spin", 15}, {"release", 200}}},
         {"Function: lit sheet",
-         {{"instrument", 3}, {"f_style", 1}, {"f_scanlines", 64}, {"f_shading", 0.8f}, {"f_interlace", 2}, {"f_range", 3.0f},
+         {{"instrument", 3}, {"sheet", 1}, {"scanlines", 64}, {"shading", 0.8f}, {"interlace", 2}, {"f_range", 3.0f},
           {"f_height", 0.6f}, {"f_hidden", 1}, {"f_azimuth", 35}, {"f_elevation", 30}, {"f_perspective", 0.2f}, {"f_spin", 10},
           {"release", 200}}},
         {"Collision: by velocity",

@@ -10,6 +10,7 @@ In XY mode left = X and right = Y, so the sound is the picture.
   Feynman (Feynman diagrams), Scenes (twelve pictures from around particle physics: tracking planes, wire and spark
   chambers, showers, Cherenkov rings, accelerators, the flux tube, the Higgs potential, neutrino oscillation,
   the Eightfold Way) and CMS tracker (a Phase-2 Outer Tracker module, exploded, put in place, then hit by tracks).
+  Every mode can also draw its picture as a shaded sheet: a raster of scanlines, lit by dwell time.
 - **CS Mux**, an effect. It serializes two XY sources (main input and sidechain) so both pictures show without distorting each other.
 
 All three are built. How to install, wire and play them is in [docs/manual.md](docs/manual.md).
