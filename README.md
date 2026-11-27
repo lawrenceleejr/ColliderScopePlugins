@@ -1,6 +1,7 @@
 # ColliderScope Plugins
 
-Three macOS audio plugins (VST3 + AU) for ColliderScope oscilloscope music, on one shared C++ core.
+Three macOS audio plugins (VST3 + AU) for [ColliderScope](https://cern.ch/colliderscope) oscilloscope music, on one shared C++ core.
+By [Larry Lee](https://cern.ch/larry).
 In XY mode left = X and right = Y, so the sound is the picture.
 
 - **CS Chamber**, a MIDI instrument. Each note births a cloud-chamber track drawn as an XY loop pitched to the note. Plays chords.
