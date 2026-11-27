@@ -254,9 +254,9 @@ TEST_CASE("CPU: CS Bubble and CS Orbital under 5 % of one core", "[realtime][acc
   surface.setFunction("sin(3 * r - 4 * t) / (1 + r)");
   surface.lines = 32;
   const double function = cpuPercent<cs::SurfaceEngine>(surface);
-  surface.style = cs::SurfaceParams::Style::Sheet;
-  surface.scanlines = 160;
-  surface.interlace = 4;
+  surface.voice.sheet.style = cs::SheetParams::Style::Sheet;
+  surface.voice.sheet.scanlines = 160;
+  surface.voice.sheet.interlace = 4;
   const double sheet = cpuPercent<cs::SurfaceEngine>(surface);
   WARN("function as a sheet (160 lines, interlaced 4): " << sheet << " % of a core");
   CHECK(sheet < 5.0);
@@ -292,6 +292,24 @@ TEST_CASE("CPU: CS Bubble and CS Orbital under 5 % of one core", "[realtime][acc
   tracker.stage = cs::TrackerStage::Tracks;
   tracker.detail = 1.0;
   const double tracks = cpuPercent<cs::TrackerEngine>(tracker);
+  // Every ColliderScope instrument drawn as a sheet, at the most scanlines.
+  double worstSheet = 0.0;
+  int worstSheetIndex = 0;
+  for (int i = 0; i < cs::kInstrumentCount; ++i) {
+    cs::MultiParams m;
+    m.instrument = static_cast<cs::Instrument>(i);
+    m.voice.sheet.style = cs::SheetParams::Style::Sheet;
+    m.voice.sheet.scanlines = 160;
+    m.script.setText("E = mc^2");
+    m.surface.setFunction("sin(3 * r - 4 * t) / (1 + r)");
+    const double cost = cpuPercent<cs::MultiEngine>(m);
+    if (cost > worstSheet) {
+      worstSheet = cost;
+      worstSheetIndex = i;
+    }
+  }
+  WARN("sheets, worst (instrument " << worstSheetIndex << "): " << worstSheet << " % of a core");
+  CHECK(worstSheet < 5.0);
   WARN("scenes, worst (" << cs::sceneName(static_cast<cs::Scene>(worstIndex)) << "): " << worstScene
                          << " % of a core; CMS tracker with tracks: " << tracks << " %, audio plus picture building");
   CHECK(worstScene < 5.0);

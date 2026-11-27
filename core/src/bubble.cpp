@@ -123,7 +123,7 @@ void BubbleSource::makeTracks(const Params& params) {
     s = static_cast<float>(rng.uniform(0.6, 1.4));
 }
 
-void BubbleSource::build(const Params& params, int, double age, std::span<XY> table) {
+void BubbleSource::build(const Params& params, int note, double age, std::span<XY> table) {
   if (params.field != builtField_)
     makeTracks(params); // the field moved: the same particles, bent anew
 
@@ -168,6 +168,12 @@ void BubbleSource::build(const Params& params, int, double age, std::span<XY> ta
   }
   // Bubbles are already in order along the track: keep it, so the picture
   // is drawn the way the particle flew.
+  if (params.voice.sheet.style == SheetParams::Style::Sheet) {
+    fills_.clear();
+    fillClosed(strokes_, 0.75f, fills_); // every bubble a filled disc, its ring drawn over it
+    sheet_.build(params.voice.sheet, note, fills_, strokes_, table);
+    return;
+  }
   if (params.voice.timing == Timing::Harmonic) {
     grid_.setSolveOrder(false); // bubbles stay in the order the particle flew
     grid_.build(strokes_, table); // every bubble on a grid of equal slots

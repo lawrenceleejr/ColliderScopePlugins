@@ -349,10 +349,25 @@ void fluxTube(Ctx& c) {
 
 // ------------------------------------------------------------- Higgs potential
 
-void higgsPotential(Ctx& c) {
+const Expression& higgsHat() {
   static thread_local Expression hat;
   if (!hat.valid())
     hat.compile("1.2*((r/1.5)^2 - 1)^2 - 0.8");
+  return hat;
+}
+
+SurfaceParams higgsSurface(const GalleryParams& p) {
+  SurfaceParams s;
+  s.range = 1.9; // the brim stays below the peak: a hat, not a bowl
+  s.height = 1.0;
+  s.lines = 10 + static_cast<int>(10.0 * p.detail);
+  s.hidden = true;
+  s.camera = p.camera;
+  return s;
+}
+
+void higgsPotential(Ctx& c) {
+  const Expression& hat = higgsHat();
   SurfaceParams s;
   s.range = 1.9; // the brim stays below the peak: a hat, not a bowl
   s.height = 1.0;
@@ -515,8 +530,33 @@ void GallerySource::birth(const Params& params, int note, int velocity, std::uin
   energy_ = velocity / 127.0;
 }
 
-void GallerySource::build(const Params& params, int, double age, std::span<XY> table) {
+std::vector<FillPolygon> sceneFills(const GalleryParams& params, double age, const std::vector<Stroke>& strokes) {
+  std::vector<FillPolygon> fills;
+  if (params.scene == Scene::HiggsPotential) {
+    fills = surfacePolygons(higgsHat(), higgsSurface(params), 0.0, params.spin * age, 28);
+    // sceneStrokes fitted the picture within radius 0.9: fit the fill, which
+    // covers the same surface, the same way.
+    double reach = 0.0;
+    for (const FillPolygon& f : fills)
+      for (const Vec2& p : f.contours[0])
+        reach = std::max(reach, std::hypot(p.x, p.y));
+    if (reach > 0.9)
+      for (FillPolygon& f : fills)
+        for (Vec2& p : f.contours[0])
+          p = {p.x * 0.9 / reach, p.y * 0.9 / reach};
+    return fills;
+  }
+  fillClosed(strokes, 0.45f, fills);
+  return fills;
+}
+
+void GallerySource::build(const Params& params, int note, double age, std::span<XY> table) {
   std::vector<Stroke> strokes = sceneStrokes(params, age, energy_, seed_);
+  if (params.voice.sheet.style == SheetParams::Style::Sheet) {
+    fills_ = sceneFills(params, age, strokes);
+    sheet_.build(params.voice.sheet, note, fills_, strokes, table);
+    return;
+  }
   if (strokes.empty()) {
     std::fill(table.begin(), table.end(), XY{});
     return;

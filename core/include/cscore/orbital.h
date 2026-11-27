@@ -95,7 +95,7 @@ public:
   static constexpr double kSize = 0.9; // the outer shell's reach in the picture
   static double rebuildSeconds(const Params&) noexcept { return 1.0 / 60.0; } // a wireframe costs more to build than a track
 
-  void prepare(double) {}
+  void prepare(double sampleRate) { sheet_.prepare(sampleRate); }
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);
   void build(const Params& params, int note, double age, std::span<XY> table);
 
@@ -109,6 +109,8 @@ private:
   int chosen_ = 1;
   std::vector<Stroke> strokes_, ordered_;
   HarmonicGrid grid_;
+  SheetRenderer sheet_;
+  std::vector<FillPolygon> fills_;
 };
 
 using OrbitalEngine = MonoEngine<OrbitalSource>;

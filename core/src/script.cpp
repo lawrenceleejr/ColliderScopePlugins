@@ -415,7 +415,7 @@ void ScriptSource::layout(const Params& params) {
 
 void ScriptSource::birth(const Params& params, int, int, std::uint32_t) { layout(params); }
 
-void ScriptSource::build(const Params& params, int, double age, std::span<XY> table) {
+void ScriptSource::build(const Params& params, int note, double age, std::span<XY> table) {
   layout(params); // the text can be edited while a note sounds
   if (strokes_.empty()) {
     std::fill(table.begin(), table.end(), XY{});
@@ -449,6 +449,12 @@ void ScriptSource::build(const Params& params, int, double age, std::span<XY> ta
     if (shown_.empty())
       shown_.push_back({strokes_[0][0], strokes_[0][0]});
     drawn = &shown_;
+  }
+  if (params.voice.sheet.style == SheetParams::Style::Sheet) {
+    fills_.clear();
+    ribbons(*drawn, params.voice.sheet.width, 0.85f, fills_, true); // bold letters: every stroke a filled ribbon
+    sheet_.build(params.voice.sheet, note, fills_, *drawn, table);
+    return;
   }
   if (params.voice.timing == Timing::Harmonic) {
     grid_.setSolveOrder(false); // text is drawn in reading order

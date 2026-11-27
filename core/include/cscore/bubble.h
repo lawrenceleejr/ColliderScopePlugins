@@ -51,7 +51,7 @@ public:
   static constexpr double kChamberRadius = 0.9;
   static double rebuildSeconds(const Params&) noexcept { return 0.002; }
 
-  void prepare(double) {}
+  void prepare(double sampleRate) { sheet_.prepare(sampleRate); }
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);
   void build(const Params& params, int note, double age, std::span<XY> table);
 
@@ -70,6 +70,8 @@ private:
   std::vector<Stroke> strokes_;
   HarmonicGrid grid_;
   void makeTracks(const Params& params);
+  SheetRenderer sheet_;
+  std::vector<FillPolygon> fills_;
 };
 
 using BubbleEngine = MonoEngine<BubbleSource>;

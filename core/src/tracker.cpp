@@ -298,8 +298,16 @@ void TrackerSource::birth(const Params& params, int note, int velocity, std::uin
   energy_ = velocity / 127.0;
 }
 
-void TrackerSource::build(const Params& params, int, double age, std::span<XY> table) {
+void TrackerSource::build(const Params& params, int note, double age, std::span<XY> table) {
   frame_ = trackerFrame(params, age, energy_, seed_);
+  if (params.voice.sheet.style == SheetParams::Style::Sheet) {
+    // The sensors, hybrids, layers and discs filled dimly, the lines over them.
+    fills_.clear();
+    fillClosed(frame_.strokes, 0.4f, fills_);
+    ribbons(frame_.strokes, params.voice.sheet.width, 0.9f, fills_, false, 4); // the stubs: short and bright
+    sheet_.build(params.voice.sheet, note, fills_, frame_.strokes, table);
+    return;
+  }
   if (frame_.strokes.empty()) {
     std::fill(table.begin(), table.end(), XY{});
     return;

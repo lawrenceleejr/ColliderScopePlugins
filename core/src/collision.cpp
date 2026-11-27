@@ -133,7 +133,7 @@ void CollisionSource::birth(const Params& params, int note, int velocity, std::u
   grid_.reset();
 }
 
-void CollisionSource::build(const Params& params, int, double age, std::span<XY> table) {
+void CollisionSource::build(const Params& params, int note, double age, std::span<XY> table) {
   // Everything flies out from the collision point at one speed.
   const double reached = params.formMs > 0.0 ? std::min(1.0, age / (params.formMs * 1e-3)) * kMuonRadius : kMuonRadius;
   const bool formed = reached >= kMuonRadius;
@@ -226,6 +226,15 @@ void CollisionSource::build(const Params& params, int, double age, std::span<XY>
   }
   if (strokes_.empty()) {
     std::fill(table.begin(), table.end(), XY{});
+    return;
+  }
+  if (params.voice.sheet.style == SheetParams::Style::Sheet) {
+    // The detector's outline filled dimly; the calorimeter towers as solid
+    // bars, bright; the tracks drawn over it all.
+    fills_.clear();
+    fillClosed(strokes_, 0.25f, fills_, -1.0);
+    ribbons(strokes_, 2.0 * params.voice.sheet.width, 0.95f, fills_, false, 2);
+    sheet_.build(params.voice.sheet, note, fills_, strokes_, table);
     return;
   }
   if (params.voice.timing == Timing::Harmonic) {

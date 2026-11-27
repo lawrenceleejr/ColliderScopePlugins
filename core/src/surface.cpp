@@ -110,7 +110,7 @@ Path surfaceSheet(const Expression& f, const SurfaceParams& params, double t, do
 
   // How much light each point gets, from a lamp above and to one side of the
   // surface. The beam's dwell follows it, so that is how bright the sheet is there.
-  const double shading = std::clamp(params.shading, 0.0, 1.0);
+  const double shading = std::clamp(params.voice.sheet.shading, 0.0, 1.0);
   auto weight = [&](double u, double v) {
     constexpr double h = 0.02;
     const double dzdu = (z(u + h, v) - z(u - h, v)) / (2.0 * h), dzdv = (z(u, v + h) - z(u, v - h)) / (2.0 * h);
@@ -200,6 +200,36 @@ Path surfaceSheet(const Expression& f, const SurfaceParams& params, double t, do
   return path;
 }
 
+std::vector<FillPolygon> surfacePolygons(const Expression& f, const SurfaceParams& params, double t, double spinDegrees, int n) {
+  Camera camera = params.camera;
+  camera.azimuth += spinDegrees;
+  const View view(camera, kExtent * std::sqrt(3.0));
+  n = std::clamp(n, 2, 96);
+  const double range = params.range, height = params.height;
+  auto model = [&](double u, double v) {
+    const double z = std::clamp(f.valid() ? f.eval(u * range, v * range, t) * height : 0.0, -1.0, 1.0);
+    return Vec3{u * kExtent, v * kExtent, z * kExtent};
+  };
+  std::vector<Vec3> grid(static_cast<std::size_t>((n + 1) * (n + 1)));
+  for (int j = 0; j <= n; ++j)
+    for (int i = 0; i <= n; ++i)
+      grid[static_cast<std::size_t>(j * (n + 1) + i)] = view.project(model(-1.0 + 2.0 * i / n, -1.0 + 2.0 * j / n));
+  std::vector<FillPolygon> out;
+  for (int j = 0; j < n; ++j)
+    for (int i = 0; i < n; ++i) {
+      const Vec3 a = grid[static_cast<std::size_t>(j * (n + 1) + i)], b = grid[static_cast<std::size_t>(j * (n + 1) + i + 1)],
+                 c = grid[static_cast<std::size_t>((j + 1) * (n + 1) + i + 1)], d = grid[static_cast<std::size_t>((j + 1) * (n + 1) + i)];
+      // The normal, on the screen, from the quad's two diagonals.
+      const Vec3 p{c.x - a.x, c.y - a.y, c.z - a.z}, q{d.x - b.x, d.y - b.y, d.z - b.z};
+      FillPolygon poly;
+      poly.contours.push_back({{a.x, a.y}, {b.x, b.y}, {c.x, c.y}, {d.x, d.y}});
+      poly.depth = 0.25 * (a.z + b.z + c.z + d.z);
+      poly.shade = lampShade({p.y * q.z - p.z * q.y, p.z * q.x - p.x * q.z, p.x * q.y - p.y * q.x});
+      out.push_back(std::move(poly));
+    }
+  return out;
+}
+
 Vec2 surfaceScreenPoint(const SurfaceParams& params, double x, double y, double z, double spinDegrees) {
   Camera camera = params.camera;
   camera.azimuth += spinDegrees;
@@ -223,13 +253,13 @@ void SurfaceSource::birth(const Params& params, int, int, std::uint32_t) { compi
 
 int SurfaceSource::sheetLines(const Params& params, int note) const noexcept {
   const double samplesPerPeriod = sampleRate_ / midiToHz(note);
-  return std::clamp(std::min(params.scanlines, static_cast<int>(samplesPerPeriod / 14.0)), 6, 160);
+  return std::clamp(std::min(params.voice.sheet.scanlines, static_cast<int>(samplesPerPeriod / 14.0)), 6, 160);
 }
 
 void SurfaceSource::build(const Params& params, int note, double age, std::span<XY> table) {
   compile(params); // the function can be edited while a note sounds
-  if (params.style == SurfaceParams::Style::Sheet) {
-    const int stride = std::clamp(params.interlace, 1, 4);
+  if (params.voice.sheet.style == SheetParams::Style::Sheet) {
+    const int stride = std::clamp(params.voice.sheet.interlace, 1, 4);
     const int lines = sheetLines(params, note) * stride; // interlaced, each frame has the lines a period has room for
     const Path path = surfaceSheet(expression_, params, age, params.spin * age, lines, static_cast<int>(frame_++ % static_cast<std::uint32_t>(stride)), stride);
     if (path.empty()) {

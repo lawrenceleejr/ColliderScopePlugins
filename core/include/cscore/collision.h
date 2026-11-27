@@ -67,7 +67,7 @@ public:
   using Params = CollisionParams;
   static double rebuildSeconds(const Params&) noexcept { return 1.0 / 120.0; }
 
-  void prepare(double) {}
+  void prepare(double sampleRate) { sheet_.prepare(sampleRate); }
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);
   void build(const Params& params, int note, double age, std::span<XY> table);
 
@@ -86,6 +86,8 @@ private:
   CollisionEvent event_ = CollisionEvent::Dijet;
   std::vector<Stroke> strokes_;
   HarmonicGrid grid_;
+  SheetRenderer sheet_;
+  std::vector<FillPolygon> fills_;
 };
 
 using CollisionEngine = MonoEngine<CollisionSource>;

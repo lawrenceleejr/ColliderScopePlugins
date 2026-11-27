@@ -214,7 +214,7 @@ TEST_CASE("Function: t moves the surface", "[function]") {
 
 TEST_CASE("Function sheets: the surface filled in with shaded scanlines", "[function]") {
   cs::SurfaceParams p;
-  p.style = cs::SurfaceParams::Style::Sheet;
+  p.voice.sheet.style = cs::SheetParams::Style::Sheet;
   cs::Expression hill;
   REQUIRE(hill.compile("1.5 * gauss(r / 1.2)"));
 
@@ -226,12 +226,12 @@ TEST_CASE("Function sheets: the surface filled in with shaded scanlines", "[func
       REQUIRE(std::hypot(q.x, q.y) <= 0.95);
     }
     CHECK(runs >= 60); // a run or more per scanline: some are split where the hill hides them
-    p.style = cs::SurfaceParams::Style::Wires;
+    p.voice.sheet.style = cs::SheetParams::Style::Lines;
     p.lines = 14;
     CHECK(cs::surfaceStrokes(hill, p, 0.0, 0.0).size() < runs);
   }
   SECTION("shading: the side facing the light dwells longer than the side away from it") {
-    p.shading = 1.0;
+    p.voice.sheet.shading = 1.0;
     p.camera = {0.0, 30.0, 0.0, 0.0};
     const cs::Path sheet = cs::surfaceSheet(hill, p, 0.0, 0.0, 60);
     float lo = 10.0f, hi = 0.0f;
@@ -242,7 +242,7 @@ TEST_CASE("Function sheets: the surface filled in with shaded scanlines", "[func
       }
     CHECK(lo < 0.25f);
     CHECK(hi > 0.6f);
-    p.shading = 0.0; // flat: one weight everywhere
+    p.voice.sheet.shading = 0.0; // flat: one weight everywhere
     for (const cs::PathPoint& q : cs::surfaceSheet(hill, p, 0.0, 0.0, 60))
       REQUIRE(q.weight == 1.0f);
   }
@@ -275,26 +275,26 @@ TEST_CASE("Function sheets: the surface filled in with shaded scanlines", "[func
 
 TEST_CASE("Function sheets: as many scanlines as a period has room for", "[function]") {
   cs::SurfaceParams p;
-  p.style = cs::SurfaceParams::Style::Sheet;
-  p.scanlines = 160;
+  p.voice.sheet.style = cs::SheetParams::Style::Sheet;
+  p.voice.sheet.scanlines = 160;
   cs::SurfaceEngine voice;
   voice.prepare(kSampleRate);
   CHECK(voice.source().sheetLines(p, 33) > voice.source().sheetLines(p, 57)); // a low note has a long period
   CHECK(voice.source().sheetLines(p, 33) == 62);                              // 872 samples / 14
   CHECK(voice.source().sheetLines(p, 93) == 6);                               // the least
-  p.scanlines = 20;
+  p.voice.sheet.scanlines = 20;
   CHECK(voice.source().sheetLines(p, 33) == 20); // and never more than asked for
 }
 
 TEST_CASE("Function sheets: pitch, picture and hard rest", "[function][acceptance]") {
   cs::SurfaceParams p;
-  p.style = cs::SurfaceParams::Style::Sheet;
+  p.voice.sheet.style = cs::SheetParams::Style::Sheet;
   p.setFunction("1.5 * gauss(r / 1.2)");
   p.spin = 0.0;
   checkPitchAndRest<cs::SurfaceEngine>(p); // interlace 1: the same picture every period
   p.voice.size = 1.0;
   p.spin = 60.0;
-  p.interlace = 3;
+  p.voice.sheet.interlace = 3;
   cs::SurfaceEngine voice;
   CHECK(peakRadius(play(voice, p, 45, 80, 0.5, 0.0)) <= 0.95);
 }
@@ -772,4 +772,151 @@ TEST_CASE("ColliderScope: the voice controls apply to whichever instrument is ch
     CHECK(peakRadius(r) <= 0.3 * 1.06);
     CHECK(peakRadius(r) > 0.03);
   }
+}
+
+// ---------------------------------------------------------------------- Sheets
+
+TEST_CASE("Sheet raster: fills inside, shades by dwell, the nearer polygon covers", "[sheet]") {
+  auto square = [](double cx, double cy, double h, double depth, float shade) {
+    cs::FillPolygon f;
+    f.contours.push_back({{cx - h, cy - h}, {cx + h, cy - h}, {cx + h, cy + h}, {cx - h, cy + h}});
+    f.depth = depth;
+    f.shade = shade;
+    return f;
+  };
+  SECTION("one square: every scanline crosses it, to and fro") {
+    const std::vector<cs::FillPolygon> fills{square(0.0, 0.0, 0.5, 0.0, 1.0f)};
+    const cs::Path path = cs::rasterSheet(fills, 20);
+    std::vector<double> starts;
+    for (std::size_t i = 0; i < path.size(); ++i) {
+      CHECK(std::abs(path[i].x) <= 0.5 + 1e-9);
+      CHECK(std::abs(path[i].y) <= 0.5);
+      if (!path[i].pen)
+        starts.push_back(path[i].x);
+    }
+    REQUIRE(starts.size() == 20);
+    for (std::size_t i = 1; i < starts.size(); ++i)
+      CHECK(starts[i] * starts[i - 1] < 0.0); // alternate sides
+  }
+  SECTION("a ring with a hole: two contours, even-odd") {
+    cs::FillPolygon ring;
+    std::vector<cs::Vec2> outer, inner;
+    for (int i = 0; i < 48; ++i) {
+      const double a = 6.283185307179586 * i / 48;
+      outer.push_back({0.6 * std::cos(a), 0.6 * std::sin(a)});
+      inner.push_back({0.3 * std::cos(a), 0.3 * std::sin(a)});
+    }
+    ring.contours = {outer, inner};
+    const cs::Path path = cs::rasterSheet(std::vector<cs::FillPolygon>{ring}, 21);
+    // The middle scanline crosses the ring twice: two runs, with the hole between.
+    int runs = 0;
+    for (const cs::PathPoint& q : path)
+      runs += !q.pen && std::abs(q.y) < 0.03;
+    CHECK(runs == 2);
+  }
+  SECTION("two squares overlapping: union, and the nearer one's shade where they overlap") {
+    const std::vector<cs::FillPolygon> fills{square(-0.2, 0.0, 0.4, 0.0, 0.0f), square(0.2, 0.0, 0.4, 1.0, 1.0f)};
+    const cs::Path path = cs::rasterSheet(fills, 8, 0, 1, 1.0);
+    int runs = 0;
+    float lo = 10.0f, hi = 0.0f;
+    for (const cs::PathPoint& q : path) {
+      runs += !q.pen;
+      if (q.pen) {
+        lo = std::min(lo, q.weight);
+        hi = std::max(hi, q.weight);
+      }
+    }
+    CHECK(runs == 8); // one run a line: no gap where they overlap
+    CHECK_THAT(lo, WithinAbs(0.04, 1e-6)); // the far square, dark, where it is uncovered
+    CHECK_THAT(hi, WithinAbs(1.0, 1e-6));  // the near one, fully lit
+    // The far one shows only on the left: from x = -0.6 to where the near one begins, x = -0.2.
+    double darkLength = 0.0;
+    for (std::size_t i = 1; i < path.size(); ++i)
+      if (path[i].pen && path[i].weight < 0.5f)
+        darkLength += std::abs(path[i].x - path[i - 1].x);
+    CHECK_THAT(darkLength / 8.0, WithinAbs(0.4, 0.02));
+  }
+  SECTION("interlace: the frames between them draw every line once") {
+    const std::vector<cs::FillPolygon> fills{square(0.0, 0.0, 0.5, 0.0, 1.0f)};
+    int total = 0;
+    for (int offset = 0; offset < 3; ++offset) {
+      int runs = 0;
+      for (const cs::PathPoint& q : cs::rasterSheet(fills, 24, offset, 3))
+        runs += !q.pen;
+      CHECK(runs == 8);
+      total += runs;
+    }
+    CHECK(total == 24);
+  }
+  SECTION("helpers: closed strokes fill, lines become ribbons, dots discs") {
+    std::vector<cs::FillPolygon> out;
+    cs::Stroke box{{0, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0}}, line{{0, 0}, {1, 0}, {1, 1}}, dot{{0.5, 0.5}, {0.5, 0.5}};
+    cs::fillClosed({box, line, dot}, 0.5f, out);
+    CHECK(out.size() == 1);
+    out.clear();
+    cs::ribbons({box, line, dot}, 0.1, 0.5f, out);
+    CHECK(out.size() == 3); // two segments of the line, and the dot; the closed box is left to fillClosed
+    out.clear();
+    cs::ribbons({line}, 0.1, 0.5f, out, false, 2);
+    CHECK(out.empty()); // longer than the limit
+    CHECK(cs::lampShade({-0.45, 0.55, 0.7}) > 0.95f); // facing the lamp
+    CHECK(cs::lampShade({0.45, -0.55, 0.2}) < 0.05f);  // turned away
+  }
+}
+
+TEST_CASE("Sheets: every ColliderScope instrument can draw one", "[sheet][acceptance]") {
+  for (int i = 0; i < cs::kInstrumentCount; ++i) {
+    cs::MultiParams p;
+    p.instrument = static_cast<cs::Instrument>(i);
+    p.script.setText("E = mc^2");
+    p.surface.setFunction("sin(x) * cos(y)");
+    p.gallery.scene = cs::Scene::HiggsPotential;
+    p.tracker.stage = cs::TrackerStage::Module;
+    p.voice.size = 1.0;
+    CAPTURE(i);
+    // Lines, then the same as a sheet: the sheet spends far more of the period filling.
+    cs::MultiEngine lines;
+    const Render a = play(lines, p, 33, 80, 0.4, 0.0);
+    p.voice.sheet.style = cs::SheetParams::Style::Sheet;
+    cs::MultiEngine sheet;
+    const Render b = play(sheet, p, 33, 80, 0.4, 0.0);
+    CHECK(peakRadius(b) <= 0.95);
+    CHECK(peakRadius(b) > 0.15);
+    // Filling moves the beam into places the lines never go: count the
+    // points of the sheet that are not on (or near) the line picture.
+    std::vector<std::uint8_t> onLines(64 * 64, 0);
+    for (std::size_t k = 9600; k < a.x.size(); ++k) {
+      const int cx = std::clamp(static_cast<int>((a.x[k] + 1.0f) * 32.0f), 0, 63), cy = std::clamp(static_cast<int>((a.y[k] + 1.0f) * 32.0f), 0, 63);
+      onLines[static_cast<std::size_t>(cy * 64 + cx)] = 1;
+    }
+    std::size_t off = 0, total = 0;
+    for (std::size_t k = 9600; k < b.x.size(); ++k) {
+      const int cx = std::clamp(static_cast<int>((b.x[k] + 1.0f) * 32.0f), 0, 63), cy = std::clamp(static_cast<int>((b.y[k] + 1.0f) * 32.0f), 0, 63);
+      off += !onLines[static_cast<std::size_t>(cy * 64 + cx)];
+      ++total;
+    }
+    CHECK(static_cast<double>(off) / static_cast<double>(total) > 0.05);
+  }
+}
+
+TEST_CASE("Sheets: pitch and hard rest, in every instrument", "[sheet][acceptance]") {
+  const int instrument = GENERATE(0, 1, 2, 5, 6, 7, 8);
+  cs::MultiParams p;
+  p.instrument = static_cast<cs::Instrument>(instrument);
+  p.voice.sheet.style = cs::SheetParams::Style::Sheet;
+  p.script.setText("ABC");
+  p.bubble.boil = 0.0;
+  p.bubble.growth = 0.0;
+  p.orbital.spin = 0.0;
+  p.orbital.bloomMs = 0.0;
+  p.mesh.spin = 0.0;
+  p.feynman.motion = 0.0;
+  p.gallery.speed = 0.0;
+  p.gallery.spin = 0.0;
+  p.gallery.formMs = 0.0;
+  p.gallery.scene = cs::Scene::Cherenkov;
+  p.tracker.stage = cs::TrackerStage::Module;
+  p.tracker.spin = 0.0;
+  CAPTURE(instrument);
+  checkPitchAndRest<cs::MultiEngine>(p);
 }

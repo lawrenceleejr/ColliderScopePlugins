@@ -62,7 +62,7 @@ public:
   using Params = TrackerParams;
   static double rebuildSeconds(const Params&) noexcept { return 1.0 / 50.0; }
 
-  void prepare(double) {}
+  void prepare(double sampleRate) { sheet_.prepare(sampleRate); }
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);
   void build(const Params& params, int note, double age, std::span<XY> table);
   const TrackerFrame& frame() const noexcept { return frame_; }
@@ -71,6 +71,8 @@ private:
   std::uint64_t seed_ = 1;
   double energy_ = 0.6;
   TrackerFrame frame_;
+  SheetRenderer sheet_;
+  std::vector<FillPolygon> fills_;
 };
 
 using TrackerEngine = MonoEngine<TrackerSource>;

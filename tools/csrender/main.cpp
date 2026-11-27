@@ -23,7 +23,7 @@ const char* kUsage =
     "  csrender notes --out PREFIX [--notes NOTE:START:DUR[:VEL],...] [options]\n"
     "      Play a note list through an instrument: --instrument chamber (default), bubble, orbital, script, function, collision or mesh.\n"
     "      function:  --function 'sin(3*r - 4*t) / (1 + r)'   --range R   --height H   --lines N   --hidden 0|1   --spin DEG/S\n"
-    "                 --style wires|sheet   --scanlines N   --shading S   --interlace N\n"
+    "      all but chamber: --style lines|sheet   --scanlines N   --shading S   --interlace N   --fill SHARE   --width W\n"
     "      collision: --event auto|minbias|dijet|zmumu|multijet|fourmuon|random   --field F   --pileup P   --detector 0|1   --form MS   --3d 0|1\n"
     "      scenes:    --scene tracking-planes|wire-chamber|calorimeter-shower|cherenkov-rings|spark-chamber|betatron|\n"
     "                 cyclotron|bunch-crossings|flux-tube|higgs-potential|neutrino-oscillation|eightfold-way (or 1-12)\n"
@@ -157,6 +157,12 @@ void readVoice(const Args& args, cs::VoiceParams& v) {
   v.gainDb = args.num("gain", v.gainDb);
   v.quality = choose<cs::Quality>(args, "quality", {{"exact", cs::Quality::ScopeExact}, {"clean", cs::Quality::Clean}}, v.quality);
   v.timing = choose<cs::Timing>(args, "timing", {{"even", cs::Timing::Even}, {"harmonic", cs::Timing::Harmonic}}, v.timing);
+  v.sheet.style = args.str("style", "lines") == "sheet" ? cs::SheetParams::Style::Sheet : cs::SheetParams::Style::Lines;
+  v.sheet.scanlines = static_cast<int>(args.num("scanlines", v.sheet.scanlines));
+  v.sheet.shading = args.num("shading", v.sheet.shading);
+  v.sheet.interlace = static_cast<int>(args.num("interlace", v.sheet.interlace));
+  v.sheet.fillShare = args.num("fill", v.sheet.fillShare);
+  v.sheet.width = args.num("width", v.sheet.width);
 }
 
 csio::Audio renderBubble(const Args& args, double sampleRate) {
@@ -238,10 +244,6 @@ csio::Audio renderFunction(const Args& args, double sampleRate) {
   p.lines = static_cast<int>(args.num("lines", p.lines));
   p.hidden = args.num("hidden", 1) != 0;
   p.spin = args.num("spin", p.spin);
-  p.style = args.str("style", "wires") == "sheet" ? cs::SurfaceParams::Style::Sheet : cs::SurfaceParams::Style::Wires;
-  p.scanlines = static_cast<int>(args.num("scanlines", p.scanlines));
-  p.shading = args.num("shading", p.shading);
-  p.interlace = static_cast<int>(args.num("interlace", p.interlace));
   readCamera(args, p.camera);
   cs::SurfaceEngine voice;
   voice.prepare(sampleRate);

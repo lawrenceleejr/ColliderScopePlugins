@@ -55,13 +55,17 @@ struct MeshParams {
 // creases and open edges, as screen strokes, joined end to end where they meet.
 std::vector<Stroke> meshStrokes(const Mesh& mesh, const MeshParams& params, double spinDegrees);
 
+// The faces to fill for one view, with depth and shade; those facing away
+// are left out when params.cull is on.
+std::vector<FillPolygon> meshFaces(const Mesh& mesh, const MeshParams& params, double spinDegrees);
+
 class MeshSource {
 public:
   using Params = MeshParams;
   static double rebuildSeconds(const Params&) noexcept { return 1.0 / 40.0; }
 
   MeshSource();
-  void prepare(double) {}
+  void prepare(double sampleRate) { sheet_.prepare(sampleRate); }
   void birth(const Params&, int, int, std::uint32_t) {}
   void build(const Params& params, int note, double age, std::span<XY> table);
 
@@ -72,6 +76,8 @@ public:
 private:
   mutable std::mutex mutex_;
   std::shared_ptr<const Mesh> mesh_;
+  SheetRenderer sheet_;
+  std::vector<FillPolygon> fills_;
 };
 
 using MeshEngine = MonoEngine<MeshSource>;

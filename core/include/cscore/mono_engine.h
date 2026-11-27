@@ -35,6 +35,7 @@
 #include "cscore/oscillator.h"
 #include "cscore/path.h"
 #include "cscore/pitch.h"
+#include "cscore/sheet.h"
 
 namespace cs {
 
@@ -48,6 +49,7 @@ struct VoiceParams {
   double gainDb = 0.0;    // -24 to 0 dB
   Quality quality = Quality::ScopeExact;
   Timing timing = Timing::Harmonic;
+  SheetParams sheet; // Lines, or a filled Sheet
 };
 
 template <typename Source>

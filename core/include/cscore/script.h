@@ -57,7 +57,7 @@ public:
   using Params = ScriptParams;
   static double rebuildSeconds(const Params&) noexcept { return 0.01; }
 
-  void prepare(double) {}
+  void prepare(double sampleRate) { sheet_.prepare(sampleRate); }
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);
   void build(const Params& params, int note, double age, std::span<XY> table);
 
@@ -71,6 +71,8 @@ private:
   std::vector<Stroke> strokes_, shown_;
   std::vector<double> lengths_; // cumulative length at the end of each stroke
   HarmonicGrid grid_;
+  SheetRenderer sheet_;
+  std::vector<FillPolygon> fills_;
 };
 
 using ScriptEngine = MonoEngine<ScriptSource>;

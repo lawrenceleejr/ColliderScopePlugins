@@ -54,19 +54,25 @@ double neutrinoProbability(int from, int to, double kmPerGeV) noexcept;
 // The scene as strokes, fitted within radius 0.9. Exposed for tests and offline use.
 std::vector<Stroke> sceneStrokes(const GalleryParams& params, double age, double energy, std::uint64_t seed);
 
+// What a scene fills in when drawn as a sheet: its closed shapes, dimly, or
+// for the Higgs potential the surface itself, shaded.
+std::vector<FillPolygon> sceneFills(const GalleryParams& params, double age, const std::vector<Stroke>& strokes);
+
 class GallerySource {
 public:
   using Params = GalleryParams;
   // The Higgs potential is a mesh of wires, the most to build: redrawn less often.
   static double rebuildSeconds(const Params& p) noexcept { return p.scene == Scene::HiggsPotential ? 1.0 / 30.0 : 1.0 / 60.0; }
 
-  void prepare(double) {}
+  void prepare(double sampleRate) { sheet_.prepare(sampleRate); }
   void birth(const Params& params, int note, int velocity, std::uint32_t serial);
   void build(const Params& params, int note, double age, std::span<XY> table);
 
 private:
   std::uint64_t seed_ = 1;
   double energy_ = 0.6;
+  SheetRenderer sheet_;
+  std::vector<FillPolygon> fills_;
 };
 
 using GalleryEngine = MonoEngine<GallerySource>;

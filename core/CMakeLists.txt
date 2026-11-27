@@ -14,6 +14,7 @@ add_library(cscore STATIC
   src/path.cpp
   src/scope_view.cpp
   src/script.cpp
+  src/sheet.cpp
   src/surface.cpp
   src/tracker.cpp
   src/tracks.cpp

@@ -263,6 +263,42 @@ std::vector<Stroke> meshStrokes(const Mesh& mesh, const MeshParams& params, doub
   return out;
 }
 
+std::vector<FillPolygon> meshFaces(const Mesh& mesh, const MeshParams& params, double spinDegrees) {
+  std::vector<FillPolygon> out;
+  const double a = spinDegrees * kPi / 180.0, c = std::cos(a), s = std::sin(a);
+  auto turn = [&](Vec3 p) -> Vec3 {
+    switch (params.spinAxis) {
+    case 0:
+      return {p.x, p.y * c - p.z * s, p.y * s + p.z * c};
+    case 1:
+      return {p.x * c + p.z * s, p.y, -p.x * s + p.z * c};
+    default:
+      return {p.x * c - p.y * s, p.x * s + p.y * c, p.z};
+    }
+  };
+  const View view(params.camera, 1.0);
+  const double zoom = std::clamp(params.zoom, 0.05, 1.5);
+  std::vector<Vec3> screen(mesh.vertices.size());
+  for (std::size_t i = 0; i < screen.size(); ++i) {
+    screen[i] = view.project(turn(mesh.vertices[i]));
+    screen[i].x *= zoom;
+    screen[i].y *= zoom;
+  }
+  out.reserve(mesh.faces.size());
+  for (std::size_t f = 0; f < mesh.faces.size(); ++f) {
+    if (params.cull && view.depthOf(turn(mesh.normals[f])) <= 0.0)
+      continue; // facing away: hidden behind the faces in front of it
+    const Vec3 p = screen[mesh.faces[f][0]], q = screen[mesh.faces[f][1]], r = screen[mesh.faces[f][2]];
+    const Vec3 u{q.x - p.x, q.y - p.y, q.z - p.z}, w{r.x - p.x, r.y - p.y, r.z - p.z};
+    FillPolygon tri;
+    tri.contours.push_back({{p.x, p.y}, {q.x, q.y}, {r.x, r.y}});
+    tri.depth = (p.z + q.z + r.z) / 3.0;
+    tri.shade = lampShade({u.y * w.z - u.z * w.y, u.z * w.x - u.x * w.z, u.x * w.y - u.y * w.x});
+    out.push_back(std::move(tri));
+  }
+  return out;
+}
+
 MeshSource::MeshSource() : mesh_(torusMesh()) {}
 
 void MeshSource::setMesh(std::shared_ptr<const Mesh> mesh) {
@@ -277,9 +313,14 @@ std::shared_ptr<const Mesh> MeshSource::mesh() const {
   return mesh_;
 }
 
-void MeshSource::build(const Params& params, int, double age, std::span<XY> table) {
+void MeshSource::build(const Params& params, int note, double age, std::span<XY> table) {
   const std::shared_ptr<const Mesh> current = mesh(); // builder thread: a brief lock, never the audio thread
   std::vector<Stroke> strokes = meshStrokes(*current, params, params.spin * age);
+  if (params.voice.sheet.style == SheetParams::Style::Sheet) {
+    fills_ = meshFaces(*current, params, params.spin * age); // shaded faces, with the outline and creases over them
+    sheet_.build(params.voice.sheet, note, fills_, strokes, table);
+    return;
+  }
   if (strokes.empty()) {
     std::fill(table.begin(), table.end(), XY{});
     return;

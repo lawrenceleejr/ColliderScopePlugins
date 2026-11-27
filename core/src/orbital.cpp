@@ -132,7 +132,7 @@ void OrbitalSource::birth(const Params& params, int note, int velocity, std::uin
                                                                                          : autoOrbital(note, velocity);
 }
 
-void OrbitalSource::build(const Params& params, int, double age, std::span<XY> table) {
+void OrbitalSource::build(const Params& params, int note, double age, std::span<XY> table) {
   // A fixed choice follows the control; Auto keeps what the note was born with.
   if (params.orbital >= 1 && params.orbital <= static_cast<int>(kOrbitals.size()))
     chosen_ = params.orbital;
@@ -194,6 +194,39 @@ void OrbitalSource::build(const Params& params, int, double age, std::span<XY> t
         add(shell, theta, 2.0 * kPi * i / kPoints);
       flush();
     }
+  }
+  if (params.voice.sheet.style == SheetParams::Style::Sheet) {
+    // The isosurfaces as shaded quads, the far side hidden by the depth
+    // buffer, with the wires drawn over them.
+    fills_.clear();
+    auto corner = [&](int shell, double theta, double phi, Vec3& out) {
+      const double r = shape_.radius(shell, level, theta, phi, settled) * kSize;
+      if (r <= 0.0)
+        return false;
+      const double a = phi + spin;
+      const double x = r * std::sin(theta) * std::cos(a), y = r * std::sin(theta) * std::sin(a), z = r * std::cos(theta);
+      out = {x, z * cosTilt - y * sinTilt, -(y * cosTilt + z * sinTilt)}; // screen x, screen y, toward the viewer
+      return true;
+    };
+    constexpr int rings = 20, around = 36;
+    for (int shell = 0; shell < shells; ++shell)
+      for (int j = 0; j < rings; ++j)
+        for (int i = 0; i < around; ++i) {
+          const double t0 = kPi * j / rings, t1 = kPi * (j + 1) / rings;
+          const double p0 = 2.0 * kPi * i / around, p1 = 2.0 * kPi * (i + 1) / around;
+          Vec3 c[4];
+          if (!corner(shell, t0, p0, c[0]) || !corner(shell, t0, p1, c[1]) || !corner(shell, t1, p1, c[2]) ||
+              !corner(shell, t1, p0, c[3]))
+            continue; // at an angular node the surface is open
+          const Vec3 u{c[2].x - c[0].x, c[2].y - c[0].y, c[2].z - c[0].z}, w{c[3].x - c[1].x, c[3].y - c[1].y, c[3].z - c[1].z};
+          FillPolygon quad;
+          quad.contours.push_back({{c[0].x, c[0].y}, {c[1].x, c[1].y}, {c[2].x, c[2].y}, {c[3].x, c[3].y}});
+          quad.depth = 0.25 * (c[0].z + c[1].z + c[2].z + c[3].z);
+          quad.shade = lampShade({u.y * w.z - u.z * w.y, u.z * w.x - u.x * w.z, u.x * w.y - u.y * w.x});
+          fills_.push_back(std::move(quad));
+        }
+    sheet_.build(params.voice.sheet, note, fills_, strokes_, table);
+    return;
   }
   if (params.voice.timing == Timing::Harmonic) {
     // The wires arrive in the same order every time; the solver arranges

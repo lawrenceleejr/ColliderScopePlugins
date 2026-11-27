@@ -168,7 +168,7 @@ void FeynmanSource::birth(const Params& params, int note, int velocity, std::uin
   grid_.reset();
 }
 
-void FeynmanSource::build(const Params& params, int, double age, std::span<XY> table) {
+void FeynmanSource::build(const Params& params, int note, double age, std::span<XY> table) {
   const int count = static_cast<int>(feynmanDiagrams().size());
   if (params.diagram >= 1 && params.diagram <= count && params.diagram != chosen_) {
     chosen_ = params.diagram; // a fixed choice follows the control
@@ -213,6 +213,12 @@ void FeynmanSource::build(const Params& params, int, double age, std::span<XY> t
   }
   if (strokes_.empty()) {
     std::fill(table.begin(), table.end(), XY{});
+    return;
+  }
+  if (params.voice.sheet.style == SheetParams::Style::Sheet) {
+    fills_.clear();
+    ribbons(strokes_, params.voice.sheet.width, 0.85f, fills_, true); // solid lines, and the vertices as discs
+    sheet_.build(params.voice.sheet, note, fills_, strokes_, table);
     return;
   }
   if (params.voice.timing == Timing::Harmonic) {
