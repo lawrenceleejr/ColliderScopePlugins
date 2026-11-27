@@ -223,7 +223,8 @@ TEST_CASE("Tracker: exploded, the module is taller; both module types draw", "[t
     p.stage = cs::TrackerStage::Exploded;
     const auto apart = cs::trackerFrame(p, 1.0, 0.5, 1);
     CAPTURE(static_cast<int>(type));
-    CHECK(height(apart.strokes) > 1.1 * height(together.strokes)); // less than it might be: the fit to the screen shrinks it
+    CHECK(height(apart.strokes) > 1.1); // the layers stand apart across most of the screen
+    CHECK(height(together.strokes) < height(apart.strokes));
     CHECK(together.strokes.size() == apart.strokes.size()); // the same parts, moved
     CHECK(reach(apart.strokes) <= 0.9 + 1e-9);
   }
