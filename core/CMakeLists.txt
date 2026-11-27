@@ -6,6 +6,7 @@ add_library(cscore STATIC
   src/cscore.cpp
   src/expr.cpp
   src/feynman.cpp
+  src/gallery.cpp
   src/hits.cpp
   src/mesh.cpp
   src/mux_engine.cpp
@@ -14,6 +15,7 @@ add_library(cscore STATIC
   src/scope_view.cpp
   src/script.cpp
   src/surface.cpp
+  src/tracker.cpp
   src/tracks.cpp
   src/yin.cpp)
 target_include_directories(cscore PUBLIC include)

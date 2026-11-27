@@ -37,6 +37,10 @@ struct SurfaceParams {
 // as screen strokes. Exposed for tests and offline use.
 std::vector<Stroke> surfaceStrokes(const Expression& f, const SurfaceParams& params, double t, double spinDegrees);
 
+// Where a point (x, y, z), in the function's own units, lands on the screen
+// in the picture surfaceStrokes() draws with the same parameters and spin.
+Vec2 surfaceScreenPoint(const SurfaceParams& params, double x, double y, double z, double spinDegrees);
+
 class SurfaceSource {
 public:
   using Params = SurfaceParams;

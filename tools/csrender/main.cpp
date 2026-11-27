@@ -2,6 +2,7 @@
 // Every DSP feature gets a WAV and a PNG of its XY picture here before it
 // goes into a plugin.
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -23,6 +24,10 @@ const char* kUsage =
     "      Play a note list through an instrument: --instrument chamber (default), bubble, orbital, script, function, collision or mesh.\n"
     "      function:  --function 'sin(3*r - 4*t) / (1 + r)'   --range R   --height H   --lines N   --hidden 0|1   --spin DEG/S\n"
     "      collision: --event auto|minbias|dijet|zmumu|multijet|fourmuon|random   --field F   --pileup P   --detector 0|1   --form MS   --3d 0|1\n"
+    "      scenes:    --scene tracking-planes|wire-chamber|calorimeter-shower|cherenkov-rings|spark-chamber|betatron|\n"
+    "                 cyclotron|bunch-crossings|flux-tube|higgs-potential|neutrino-oscillation|eightfold-way (or 1-12)\n"
+    "                 --form MS   --speed S   --detail D   --spin DEG/S\n"
+    "      tracker:   --stage auto|module|exploded|tracker|tracks   --module 2s|ps   --speed S   --detail D   --spin DEG/S\n"
     "      feynman:   --diagram N (0 = auto, 1-10)   --form MS   --wiggle W   --motion CYCLES/S   --arrows 0|1\n"
     "      mesh:      --stl FILE.stl   --zoom Z   --spin DEG/S   --axis x|y|z   --crease DEG   --cull 0|1   --edges N\n"
     "      function, mesh and collision in 3D also take a camera: --azimuth DEG   --elevation DEG   --roll DEG   --perspective 0..1\n"
@@ -279,6 +284,56 @@ csio::Audio renderFeynman(const Args& args, double sampleRate) {
   return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
 }
 
+csio::Audio renderScenes(const Args& args, double sampleRate) {
+  cs::GalleryParams p;
+  readVoice(args, p.voice);
+  readCamera(args, p.camera);
+  if (args.has("scene")) {
+    const std::string want = args.str("scene", "");
+    int found = -1;
+    for (int i = 0; i < cs::kSceneCount; ++i) {
+      std::string name = cs::sceneName(static_cast<cs::Scene>(i));
+      std::transform(name.begin(), name.end(), name.begin(), [](char ch) { return ch == ' ' ? '-' : static_cast<char>(std::tolower(ch)); });
+      if (name == want || std::to_string(i + 1) == want)
+        found = i;
+    }
+    if (found < 0)
+      fail("unknown scene '" + want + "'");
+    p.scene = static_cast<cs::Scene>(found);
+  }
+  p.seed = static_cast<std::uint64_t>(args.num("seed", 1));
+  p.formMs = args.num("form", p.formMs);
+  p.speed = args.num("speed", p.speed);
+  p.detail = args.num("detail", p.detail);
+  p.spin = args.num("spin", p.spin);
+  cs::GalleryEngine voice;
+  voice.prepare(sampleRate);
+  voice.setParams(p);
+  return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
+}
+
+csio::Audio renderTracker(const Args& args, double sampleRate) {
+  cs::TrackerParams p;
+  readVoice(args, p.voice);
+  readCamera(args, p.camera);
+  p.stage = choose<cs::TrackerStage>(args, "stage",
+                                     {{"auto", cs::TrackerStage::Auto},
+                                      {"module", cs::TrackerStage::Module},
+                                      {"exploded", cs::TrackerStage::Exploded},
+                                      {"tracker", cs::TrackerStage::Tracker},
+                                      {"tracks", cs::TrackerStage::Tracks}},
+                                     p.stage);
+  p.module = choose<cs::ModuleType>(args, "module", {{"2s", cs::ModuleType::TwoS}, {"ps", cs::ModuleType::PS}}, p.module);
+  p.seed = static_cast<std::uint64_t>(args.num("seed", 1));
+  p.speed = args.num("speed", p.speed);
+  p.detail = args.num("detail", p.detail);
+  p.spin = args.num("spin", p.spin);
+  cs::TrackerEngine voice;
+  voice.prepare(sampleRate);
+  voice.setParams(p);
+  return playNotes(voice, parseNotes(args.str("notes", "69:0:1:80")), sampleRate, p.voice.releaseMs * 1e-3);
+}
+
 csio::Audio renderMesh(const Args& args, double sampleRate) {
   cs::MeshParams p;
   readVoice(args, p.voice);
@@ -318,6 +373,10 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
     return renderMesh(args, sampleRate);
   if (instrument == "feynman")
     return renderFeynman(args, sampleRate);
+  if (instrument == "scenes")
+    return renderScenes(args, sampleRate);
+  if (instrument == "tracker")
+    return renderTracker(args, sampleRate);
   if (instrument == "script")
     return renderScript(args, sampleRate);
   if (instrument == "bubble")
@@ -325,7 +384,7 @@ csio::Audio renderNotes(const Args& args, double sampleRate) {
   if (instrument == "orbital")
     return renderOrbital(args, sampleRate);
   if (instrument != "chamber")
-    fail("unknown instrument '" + instrument + "' (chamber, bubble, orbital, script, function, collision, mesh, feynman)");
+    fail("unknown instrument '" + instrument + "' (chamber, bubble, orbital, script, function, collision, mesh, feynman, scenes, tracker)");
   cs::ChamberParams p;
   p.type = choose<cs::TypeMode>(args, "type",
                                 {{"auto", cs::TypeMode::Auto},

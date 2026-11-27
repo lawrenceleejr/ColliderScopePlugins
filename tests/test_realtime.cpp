@@ -269,6 +269,27 @@ TEST_CASE("CPU: CS Bubble and CS Orbital under 5 % of one core", "[realtime][acc
                     << " %; mesh: " << mesh << " %; feynman: " << feynman << " %, audio plus picture building");
   CHECK(collision3d < 5.0);
   CHECK(feynman < 5.0);
+
+  double worstScene = 0.0;
+  int worstIndex = 0;
+  for (int i = 0; i < cs::kSceneCount; ++i) {
+    cs::GalleryParams scene;
+    scene.scene = static_cast<cs::Scene>(i);
+    scene.detail = 1.0;
+    const double cost = cpuPercent<cs::GalleryEngine>(scene);
+    if (cost > worstScene) {
+      worstScene = cost;
+      worstIndex = i;
+    }
+  }
+  cs::TrackerParams tracker;
+  tracker.stage = cs::TrackerStage::Tracks;
+  tracker.detail = 1.0;
+  const double tracks = cpuPercent<cs::TrackerEngine>(tracker);
+  WARN("scenes, worst (" << cs::sceneName(static_cast<cs::Scene>(worstIndex)) << "): " << worstScene
+                         << " % of a core; CMS tracker with tracks: " << tracks << " %, audio plus picture building");
+  CHECK(worstScene < 5.0);
+  CHECK(tracks < 5.0);
   CHECK(function < 5.0);
   CHECK(collision < 5.0);
   CHECK(mesh < 5.0);

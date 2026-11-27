@@ -8,16 +8,18 @@
 #include "cscore/bubble.h"
 #include "cscore/collision.h"
 #include "cscore/feynman.h"
+#include "cscore/gallery.h"
 #include "cscore/mesh.h"
 #include "cscore/mono_engine.h"
 #include "cscore/orbital.h"
 #include "cscore/script.h"
 #include "cscore/surface.h"
+#include "cscore/tracker.h"
 
 namespace cs {
 
-enum class Instrument { Bubble, Orbital, Script, Function, Collision, Mesh, Feynman };
-inline constexpr int kInstrumentCount = 7;
+enum class Instrument { Bubble, Orbital, Script, Function, Collision, Mesh, Feynman, Scenes, Tracker };
+inline constexpr int kInstrumentCount = 9;
 
 struct MultiParams {
   VoiceParams voice; // shared by every instrument
@@ -29,6 +31,8 @@ struct MultiParams {
   CollisionParams collision;
   MeshParams mesh;
   FeynmanParams feynman;
+  GalleryParams gallery;
+  TrackerParams tracker;
 };
 
 class MultiSource {
@@ -48,6 +52,10 @@ public:
       return CollisionSource::rebuildSeconds(p.collision);
     case Instrument::Feynman:
       return FeynmanSource::rebuildSeconds(p.feynman);
+    case Instrument::Scenes:
+      return GallerySource::rebuildSeconds(p.gallery);
+    case Instrument::Tracker:
+      return TrackerSource::rebuildSeconds(p.tracker);
     case Instrument::Mesh:
       break;
     }
@@ -62,6 +70,8 @@ public:
     collision_.prepare(sampleRate);
     mesh_.prepare(sampleRate);
     feynman_.prepare(sampleRate);
+    gallery_.prepare(sampleRate);
+    tracker_.prepare(sampleRate);
   }
 
   void birth(const Params& params, int note, int velocity, std::uint32_t serial) {
@@ -84,6 +94,10 @@ public:
       return mesh_.birth(with(params.mesh, params), note, velocity, serial);
     case Instrument::Feynman:
       return feynman_.birth(with(params.feynman, params), note, velocity, serial);
+    case Instrument::Scenes:
+      return gallery_.birth(with(params.gallery, params), note, velocity, serial);
+    case Instrument::Tracker:
+      return tracker_.birth(with(params.tracker, params), note, velocity, serial);
     }
   }
 
@@ -105,6 +119,10 @@ public:
       return mesh_.build(with(params.mesh, params), note, age, table);
     case Instrument::Feynman:
       return feynman_.build(with(params.feynman, params), note, age, table);
+    case Instrument::Scenes:
+      return gallery_.build(with(params.gallery, params), note, age, table);
+    case Instrument::Tracker:
+      return tracker_.build(with(params.tracker, params), note, age, table);
     }
   }
 
@@ -130,6 +148,8 @@ private:
   CollisionSource collision_;
   MeshSource mesh_;
   FeynmanSource feynman_;
+  GallerySource gallery_;
+  TrackerSource tracker_;
   Instrument born_ = Instrument::Bubble;
   int note_ = 69, velocity_ = 80;
   std::uint32_t serial_ = 1;

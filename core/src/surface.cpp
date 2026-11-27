@@ -93,6 +93,15 @@ std::vector<Stroke> surfaceStrokes(const Expression& f, const SurfaceParams& par
   return out;
 }
 
+Vec2 surfaceScreenPoint(const SurfaceParams& params, double x, double y, double z, double spinDegrees) {
+  Camera camera = params.camera;
+  camera.azimuth += spinDegrees;
+  const View view(camera, kExtent * std::sqrt(3.0));
+  const double zz = std::clamp(z * params.height, -1.0, 1.0);
+  const Vec3 q = view.project({x / params.range * kExtent, y / params.range * kExtent, zz * kExtent});
+  return {q.x, q.y};
+}
+
 void SurfaceSource::compile(const Params& params) {
   const std::string source(params.function.data());
   if (source == compiled_)
