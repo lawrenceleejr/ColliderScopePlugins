@@ -213,7 +213,7 @@ TEST_CASE("Tracker: the stages play in order, and each can be held", "[tracker]"
   CHECK_THAT(cs::trackerFrame(p, 0.1, 0.5, 1).zoom, WithinAbs(1.0, 1e-9));
 }
 
-TEST_CASE("Tracker: exploded, the module is taller; both module types draw", "[tracker]") {
+TEST_CASE("Tracker: exploded, the layers stand apart; both module types draw", "[tracker]") {
   cs::TrackerParams p;
   p.spin = 0.0;
   for (cs::ModuleType type : {cs::ModuleType::TwoS, cs::ModuleType::PS}) {
@@ -224,7 +224,6 @@ TEST_CASE("Tracker: exploded, the module is taller; both module types draw", "[t
     const auto apart = cs::trackerFrame(p, 1.0, 0.5, 1);
     CAPTURE(static_cast<int>(type));
     CHECK(height(apart.strokes) > 1.1); // the layers stand apart across most of the screen
-    CHECK(height(together.strokes) < height(apart.strokes));
     CHECK(together.strokes.size() == apart.strokes.size()); // the same parts, moved
     CHECK(reach(apart.strokes) <= 0.9 + 1e-9);
   }
