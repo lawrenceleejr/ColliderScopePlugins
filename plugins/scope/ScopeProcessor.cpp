@@ -1,6 +1,7 @@
 // ColliderScope: one instrument plugin, several things it can draw. The
 // Instrument control picks one: a bubble chamber, hydrogen orbitals, text and
-// equations, a function of two variables, LHC-style collisions, a 3D model, or Feynman diagrams.
+// equations, a function of two variables, LHC-style collisions, a 3D model, Feynman diagrams, scenes from
+// around particle physics, or the CMS outer tracker.
 #include <map>
 
 #include "InstrumentProcessor.h"
@@ -23,7 +24,7 @@ std::unique_ptr<juce::AudioParameterFloat> num(const char* paramId, const char* 
 
 juce::AudioProcessorValueTreeState::ParameterLayout layout() {
   juce::AudioProcessorValueTreeState::ParameterLayout l;
-  l.add(choice("instrument", "Instrument", {"Bubble", "Orbital", "Script", "Function", "Collision", "Mesh", "Feynman"}, 0));
+  l.add(choice("instrument", "Instrument", {"Bubble", "Orbital", "Script", "Function", "Collision", "Mesh", "Feynman", "Scenes", "CMS tracker"}, 0));
 
   l.add(choice("b_type", "Bubble: Event", {"Auto", "Electron", "Pair", "Decay", "Beam", "Random"}, 0));
   l.add(choice("b_seedMode", "Bubble: Seed mode", {"Random", "Per key", "Global"}, 0));
@@ -91,6 +92,31 @@ juce::AudioProcessorValueTreeState::ParameterLayout layout() {
   l.add(num("k_motion", "Feynman: Motion", Range(-4.0f, 4.0f, 0.01f), 1.0f, "/s", 2));
   l.add(choice("k_arrows", "Feynman: Arrows", {"Off", "On"}, 1));
 
+  juce::StringArray scenes;
+  for (int i = 0; i < cs::kSceneCount; ++i)
+    scenes.add(cs::sceneName(static_cast<cs::Scene>(i)));
+  l.add(choice("g_scene", "Scenes: Scene", scenes, 0));
+  l.add(choice("g_seedMode", "Scenes: Seed mode", {"Random", "Per key", "Global"}, 0));
+  Range form(0.0f, 2000.0f, 1.0f);
+  form.setSkewForCentre(300.0f);
+  l.add(num("g_form", "Scenes: Form time", form, 300.0f, "ms", 0));
+  l.add(num("g_speed", "Scenes: Speed", Range(0.0f, 4.0f, 0.01f), 1.0f, "", 2));
+  l.add(num("g_detail", "Scenes: Detail", Range(0.0f, 1.0f, 0.01f), 0.5f, "", 2));
+  l.add(num("g_azimuth", "Scenes: Azimuth", Range(-180.0f, 180.0f, 1.0f), 30.0f, "deg", 0));
+  l.add(num("g_elevation", "Scenes: Elevation", Range(-90.0f, 90.0f, 1.0f), 25.0f, "deg", 0));
+  l.add(num("g_perspective", "Scenes: Perspective", Range(0.0f, 1.0f, 0.01f), 0.3f, "", 2));
+  l.add(num("g_spin", "Scenes: Spin", Range(-180.0f, 180.0f, 1.0f), 15.0f, "deg/s", 0));
+
+  l.add(choice("t_stage", "CMS tracker: Stage", {"Auto", "Module", "Exploded", "Tracker", "Tracks"}, 0));
+  l.add(choice("t_module", "CMS tracker: Module", {"2S", "PS"}, 0));
+  l.add(num("t_speed", "CMS tracker: Speed", Range(0.1f, 4.0f, 0.01f), 1.0f, "", 2));
+  l.add(num("t_detail", "CMS tracker: Detail", Range(0.0f, 1.0f, 0.01f), 0.6f, "", 2));
+  l.add(choice("t_seedMode", "CMS tracker: Seed mode", {"Random", "Per key", "Global"}, 0));
+  l.add(num("t_azimuth", "CMS tracker: Azimuth", Range(-180.0f, 180.0f, 1.0f), 30.0f, "deg", 0));
+  l.add(num("t_elevation", "CMS tracker: Elevation", Range(-90.0f, 90.0f, 1.0f), 20.0f, "deg", 0));
+  l.add(num("t_perspective", "CMS tracker: Perspective", Range(0.0f, 1.0f, 0.01f), 0.35f, "", 2));
+  l.add(num("t_spin", "CMS tracker: Spin", Range(-180.0f, 180.0f, 1.0f), 12.0f, "deg/s", 0));
+
   addVoice(l);
   return l;
 }
@@ -105,7 +131,9 @@ public:
           "f_spin",     "c_event", "c_seedMode", "c_field",    "c_pileup",    "c_detector",   "c_form",        "m_azimuth",
           "m_elevation", "m_roll", "m_perspective", "m_zoom",  "m_spin",      "m_axis",       "m_crease",      "m_cull",
           "m_edges",    "c_view",  "c_azimuth",  "c_elevation", "c_perspective", "c_spin",     "k_diagram",     "k_form",
-          "k_wiggle",   "k_motion", "k_arrows"})
+          "k_wiggle",   "k_motion", "k_arrows",   "g_scene",    "g_seedMode",  "g_form",       "g_speed",       "g_detail",
+          "g_azimuth",  "g_elevation", "g_perspective", "g_spin", "t_stage",     "t_module",     "t_speed",       "t_detail",
+          "t_seedMode", "t_azimuth", "t_elevation", "t_perspective", "t_spin"})
       values_[id] = raw(id);
     setText(kDefaultText);
     setFunction(kDefaultFunction);
@@ -192,6 +220,14 @@ private:
     case cs::Instrument::Feynman:
       cs::Editor::addGroups(panel, {{"Diagram", {"k_diagram", "k_form", "k_arrows"}}, {"Waves", {"k_wiggle", "k_motion"}}});
       break;
+    case cs::Instrument::Scenes:
+      cs::Editor::addGroups(panel, {{"Scene", {"g_scene", "g_seedMode", "g_form", "g_speed", "g_detail"}},
+                                    {"Camera (3D scenes)", {"g_azimuth", "g_elevation", "g_perspective", "g_spin"}}});
+      break;
+    case cs::Instrument::Tracker:
+      cs::Editor::addGroups(panel, {{"Sequence", {"t_stage", "t_module", "t_speed", "t_detail", "t_seedMode"}},
+                                    {"Camera", {"t_azimuth", "t_elevation", "t_perspective", "t_spin"}}});
+      break;
     case cs::Instrument::Mesh:
       panel.addButton("Model", meshLabel(), [this, &panel] { chooseMesh(panel); });
       cs::Editor::addGroups(panel, {{"Camera", {"m_azimuth", "m_elevation", "m_roll", "m_perspective", "m_zoom"}},
@@ -267,6 +303,22 @@ private:
     p.feynman.motion = v("k_motion");
     p.feynman.arrows = i("k_arrows") == 1;
 
+    p.gallery.scene = static_cast<cs::Scene>(i("g_scene"));
+    p.gallery.seedMode = static_cast<cs::SceneSeed>(i("g_seedMode"));
+    p.gallery.formMs = v("g_form");
+    p.gallery.speed = v("g_speed");
+    p.gallery.detail = v("g_detail");
+    p.gallery.camera = {v("g_azimuth"), v("g_elevation"), 0.0, v("g_perspective")};
+    p.gallery.spin = v("g_spin");
+
+    p.tracker.stage = static_cast<cs::TrackerStage>(i("t_stage"));
+    p.tracker.module = static_cast<cs::ModuleType>(i("t_module"));
+    p.tracker.speed = v("t_speed");
+    p.tracker.detail = v("t_detail");
+    p.tracker.seedMode = i("t_seedMode");
+    p.tracker.camera = {v("t_azimuth"), v("t_elevation"), 0.0, v("t_perspective")};
+    p.tracker.spin = v("t_spin");
+
     p.mesh.camera = {v("m_azimuth"), v("m_elevation"), v("m_roll"), v("m_perspective")};
     p.mesh.zoom = v("m_zoom");
     p.mesh.spin = v("m_spin");
@@ -280,7 +332,8 @@ private:
   // Not used: this plugin lays its own panel out.
   std::vector<cs::ParamGroup> groups() const override { return {}; }
 
-  // Instrument: 0 Bubble, 1 Orbital, 2 Script, 3 Function, 4 Collision, 5 Mesh, 6 Feynman.
+  // Instrument: 0 Bubble, 1 Orbital, 2 Script, 3 Function, 4 Collision, 5 Mesh, 6 Feynman, 7 Scenes, 8 CMS tracker.
+  // Scene: 0 Tracking planes ... 3 Cherenkov rings ... 6 Cyclotron ... 11 Eightfold Way.
   const std::vector<cs::Preset>& presets() const override {
     static const std::vector<cs::Preset> list = {
         {"Bubble: spiral bass",
@@ -311,6 +364,14 @@ private:
         {"Feynman: by velocity",
          {{"instrument", 6}, {"k_diagram", 0}, {"k_form", 80}, {"k_wiggle", 1.0f}, {"k_motion", 1.0f}, {"k_arrows", 1},
           {"release", 100}}},
+        {"Scenes: Cherenkov rings",
+         {{"instrument", 7}, {"g_scene", 3}, {"g_form", 250}, {"g_speed", 1}, {"g_detail", 0.7f}, {"g_spin", 10}, {"release", 200}}},
+        {"Scenes: cyclotron",
+         {{"instrument", 7}, {"g_scene", 6}, {"g_form", 0}, {"g_speed", 1}, {"g_detail", 0.5f}, {"release", 100}}},
+        {"CMS tracker: the full story",
+         {{"instrument", 8}, {"t_stage", 0}, {"t_module", 0}, {"t_speed", 1}, {"t_detail", 0.6f}, {"t_spin", 12}, {"release", 300}}},
+        {"CMS tracker: collisions",
+         {{"instrument", 8}, {"t_stage", 4}, {"t_speed", 1}, {"t_detail", 0.5f}, {"t_spin", 8}, {"release", 150}}},
         {"Mesh: turntable",
          {{"instrument", 5}, {"m_azimuth", 30}, {"m_elevation", 25}, {"m_roll", 0}, {"m_perspective", 0.3f}, {"m_zoom", 0.9f},
           {"m_spin", 30}, {"m_axis", 2}, {"m_crease", 30}, {"m_cull", 1}, {"m_edges", 600}, {"release", 200}}},

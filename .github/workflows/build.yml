@@ -100,10 +100,16 @@ jobs:
           "$root/mux/csmux_uisnap_artefacts/Release/csmux_uisnap" cs_mux_interleave.png
           "$root/mux/csmux_uisnap_artefacts/Release/csmux_uisnap" cs_mux_cycle_lock.png mode=Cycle-lock
           scope="$root/scope/colliderscope_uisnap_artefacts/Release/colliderscope_uisnap"
-          for instrument in Bubble Orbital Script Function Collision Mesh Feynman; do
+          for instrument in Bubble Orbital Script Function Collision Mesh Feynman Scenes; do
             "$scope" "colliderscope_$instrument.png" "instrument=$instrument"
           done
           "$scope" colliderscope_Collision_3D.png instrument=Collision c_view=3D
+          for scene in "Tracking planes" "Calorimeter shower" "Cherenkov rings" "Eightfold Way"; do
+            "$scope" "colliderscope_Scenes_${scene// /_}.png" instrument=Scenes "g_scene=$scene"
+          done
+          for stage in Module Exploded Tracker Tracks; do
+            "$scope" "colliderscope_CMS_$stage.png" "instrument=CMS tracker" "t_stage=$stage"
+          done
 
       - name: Package
         run: |

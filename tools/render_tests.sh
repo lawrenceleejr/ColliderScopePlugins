@@ -50,6 +50,16 @@ done
 for diagram in 1 2 3 4 5 6 7 8 9 10; do
   "$csrender" notes --instrument feynman --diagram "$diagram" --motion 0 --notes 57:0:0.6:80 --at 0.5 --out "$out/feynman_$diagram"
 done
+# Scenes: every one.
+for scene in tracking-planes wire-chamber calorimeter-shower cherenkov-rings spark-chamber betatron cyclotron \
+             bunch-crossings flux-tube higgs-potential neutrino-oscillation eightfold-way; do
+  "$csrender" notes --instrument scenes --scene "$scene" --notes 57:0:1.2:100 --at 0.9 --out "$out/scene_$scene"
+done
+# The CMS tracker: each stage held, and both module types exploded.
+for stage in module exploded tracker tracks; do
+  "$csrender" notes --instrument tracker --stage "$stage" --spin 0 --notes 57:0:1.5:100 --at 1.2 --out "$out/cms_$stage"
+done
+"$csrender" notes --instrument tracker --stage exploded --module ps --spin 0 --notes 57:0:1.5:100 --at 1.2 --out "$out/cms_exploded_ps"
 # Mesh: the built-in torus from two cameras.
 "$csrender" notes --instrument mesh --notes 57:0:1:80 --at 0.5 --out "$out/mesh_torus"
 "$csrender" notes --instrument mesh --elevation 60 --perspective 0.8 --axis x --notes 57:0:1:80 --at 0.5 --out "$out/mesh_torus_close"

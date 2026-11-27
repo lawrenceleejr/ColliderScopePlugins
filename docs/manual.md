@@ -3,8 +3,8 @@
 Three plugins for oscilloscope music:
 
 - **CS Chamber**, an instrument: cloud-chamber tracks, with chords.
-- **ColliderScope**, an instrument with seven modes, chosen with its Instrument menu: Bubble, Orbital,
-  Script, Function, Collision, Mesh and Feynman.
+- **ColliderScope**, an instrument with nine modes, chosen with its Instrument menu: Bubble, Orbital,
+  Script, Function, Collision, Mesh, Feynman, Scenes and CMS tracker.
 - **CS Mux**, an effect that shows two pictures on one scope.
  In XY mode the left channel is X and the right channel is Y, so the sound is the
 picture: every setting below changes both.
@@ -112,9 +112,9 @@ brighter, than one rounded down.
 
 ## ColliderScope (instrument)
 
-One monophonic instrument that can draw seven kinds of picture. The Instrument menu at the top of the
+One monophonic instrument that can draw nine kinds of picture. The Instrument menu at the top of the
 window picks the kind, and the panel shows that kind's controls, followed by the Voice and Output
-controls, which are the same as CS Chamber's and are shared by all seven. Presets are named by
+controls, which are the same as CS Chamber's and are shared by all nine. Presets are named by
 instrument and switch to it. A host sees every instrument's parameters at once, named "Bubble: Field",
 "Mesh: Zoom" and so on.
 
@@ -284,6 +284,68 @@ The ten diagrams: annihilation to a photon, photon exchange, Compton scattering,
 three gluons, the electron's self-energy, beta decay, vacuum polarisation, the two-photon box, gluon
 fusion to a Higgs through a top-quark loop, and a Higgs decaying to two photons. They are drawn from
 fixed layouts, not generated from a theory, and you cannot type in your own.
+
+### Scenes
+
+Twelve pictures from around particle physics, picked with the Scene menu. Velocity is the
+"energy": how busy the scene is (more tracks, more rings, a deeper shower). The seed decides the
+random parts, as in the other modes.
+
+| Scene | What it shows |
+| --- | --- |
+| Tracking planes | Six silicon planes in 3D. Hits light up plane by plane as particles cross, then the fitted tracks are drawn through them. |
+| Wire chamber | Rows of sense wires seen end on. Drift circles grow round the struck wires, each just touching the track; then the track is drawn. |
+| Calorimeter shower | A particle enters a block and branches, again and again, into an electromagnetic shower. Harder notes shower deeper. |
+| Cherenkov rings | Rings of Cherenkov light opening on a plane of photosensors (3D): sharp for muons, fuzzy for electrons. |
+| Spark chamber | Plates stacked up; sparks jump between them along each track, top to bottom, and flicker. |
+| Betatron | A beam wobbling about its orbit round the ring, three turns of it, and in the middle its turn-by-turn points tracing the phase-space ellipse. |
+| Cyclotron | A particle spiralling out between the two dees, kicked at each crossing of the gap, then extracted; and again. |
+| Bunch crossings | Two trains of bunches passing through each other in the beam pipe, with a burst where they meet. |
+| Flux tube | Two quarks pulled apart by the string between them until it snaps and a new quark pair makes two mesons. |
+| Higgs potential | The Mexican hat (3D), with a ball rolling round its valley. |
+| Neutrino oscillation | The chances of finding each flavour along the baseline, for a neutrino born as an electron, muon or tau neutrino (velocity picks which), with a marker sweeping along. Real mixing angles and mass splittings, no CP phase, no matter effects. |
+| Eightfold Way | The baryon octet (soft notes) or decuplet (hard notes), with names when Detail is 0.5 or more. |
+
+| Group | Parameter | What it does |
+| --- | --- | --- |
+| Scene | Scene | Which picture. |
+| | Seed mode | Random: new random parts every note. Per key: the same key always draws the same. Global: always the same. |
+| | Form time | How long the scene takes to build up at the start of a note. |
+| | Speed | How fast the moving scenes move (betatron, cyclotron, bunches, flux tube, the sparks' flicker, the neutrino marker, the rolling ball). 0 holds them still, which also gives the steadiest tone. |
+| | Detail | Frames, grids, sampling layers, photosensors, labels and the like. |
+| Camera (3D scenes) | Azimuth, Elevation, Perspective, Spin | Where you look from, for Tracking planes, Cherenkov rings and the Higgs potential. |
+
+The scenes are drawn to look right and to sound well, not simulated: the shower's branching, the
+sparks and the rings are made up to fit the physics, not computed from it. Neutrino oscillation is
+the exception: those curves are the real three-flavour formula.
+
+### CMS tracker
+
+A module of the CMS Phase-2 Outer Tracker, as a schematic in four stages:
+
+1. **Module**: the module, assembled, turning slowly.
+2. **Exploded**: its layers lifted apart. A 2S module is two strip sensors with spacers between them,
+   two front-end hybrids carrying the readout chips, and a service hybrid. A PS module is a
+   macro-pixel sensor and a strip sensor on a base plate, with front-end, power and readout hybrids.
+3. **Tracker**: put back together and flown into its place in the outer tracker, which draws in round
+   it: six barrel layers and five endcap discs at each end.
+4. **Tracks**: collisions. Charged particles of 1 to 10 GeV curl out through the 3.8 T field, and leave
+   a stub (the pair of hits a module makes, one in each sensor) wherever they cross a layer or a disc.
+   A new collision comes along every stage-length.
+
+| Group | Parameter | What it does |
+| --- | --- | --- |
+| Sequence | Stage | Auto plays the four stages in order over a held note, then keeps the collisions coming. Or hold one stage. |
+| | Module | 2S or PS. |
+| | Speed | How fast the stages go: at 1, each takes 2.5 seconds. |
+| | Detail | Strips, pixels, chips, barrel staves and disc spokes. |
+| | Seed mode | As in Scenes, for the collisions. |
+| Camera | Azimuth, Elevation, Perspective, Spin | Where you look from. The module alone is seen from higher up, so its face shows. |
+
+Velocity sets how many tracks each collision has. Radii, lengths and disc positions are close to the
+real detector's; the number of modules, the tilted rings of the inner barrel layers and the material
+are not drawn. The full story takes about ten seconds at Speed 1, so hold a long note or raise the
+Release.
 
 ## CS Mux (effect)
 
