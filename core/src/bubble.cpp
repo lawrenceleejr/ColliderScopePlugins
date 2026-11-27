@@ -171,7 +171,7 @@ void BubbleSource::build(const Params& params, int note, double age, std::span<X
   if (params.voice.sheet.style == SheetParams::Style::Sheet) {
     fills_.clear();
     fillClosed(strokes_, 0.75f, fills_); // every bubble a filled disc, its ring drawn over it
-    sheet_.build(params.voice.sheet, note, fills_, strokes_, table);
+    sheet_.build(params.voice.sheet, note, fills_, strokes_, table, params.voice.timing == Timing::Harmonic);
     return;
   }
   if (params.voice.timing == Timing::Harmonic) {

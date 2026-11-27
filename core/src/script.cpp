@@ -453,7 +453,7 @@ void ScriptSource::build(const Params& params, int note, double age, std::span<X
   if (params.voice.sheet.style == SheetParams::Style::Sheet) {
     fills_.clear();
     ribbons(*drawn, params.voice.sheet.width, 0.85f, fills_, true); // bold letters: every stroke a filled ribbon
-    sheet_.build(params.voice.sheet, note, fills_, *drawn, table);
+    sheet_.build(params.voice.sheet, note, fills_, *drawn, table, params.voice.timing == Timing::Harmonic);
     return;
   }
   if (params.voice.timing == Timing::Harmonic) {

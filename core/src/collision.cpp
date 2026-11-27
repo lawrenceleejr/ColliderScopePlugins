@@ -234,7 +234,7 @@ void CollisionSource::build(const Params& params, int note, double age, std::spa
     fills_.clear();
     fillClosed(strokes_, 0.25f, fills_, -1.0);
     ribbons(strokes_, 2.0 * params.voice.sheet.width, 0.95f, fills_, false, 2);
-    sheet_.build(params.voice.sheet, note, fills_, strokes_, table);
+    sheet_.build(params.voice.sheet, note, fills_, strokes_, table, params.voice.timing == Timing::Harmonic);
     return;
   }
   if (params.voice.timing == Timing::Harmonic) {

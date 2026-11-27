@@ -280,10 +280,16 @@ TEST_CASE("Function sheets: as many scanlines as a period has room for", "[funct
   cs::SurfaceEngine voice;
   voice.prepare(kSampleRate);
   CHECK(voice.source().sheetLines(p, 33) > voice.source().sheetLines(p, 57)); // a low note has a long period
-  CHECK(voice.source().sheetLines(p, 33) == 62);                              // 872 samples / 14
-  CHECK(voice.source().sheetLines(p, 93) == 6);                               // the least
+  // Harmonic timing: the most lines under the ceiling (872 samples / 14 = 62)
+  // whose sweep is on 2^n or 3 x 2^n: 48 lines sweep at 24 times the note.
+  CHECK(voice.source().sheetLines(p, 33) == 48);
+  CHECK(voice.source().sheetLines(p, 93) == 4); // the least
   p.voice.sheet.scanlines = 20;
-  CHECK(voice.source().sheetLines(p, 33) == 20); // and never more than asked for
+  CHECK(voice.source().sheetLines(p, 33) == 16); // and never more than asked for
+  p.voice.timing = cs::Timing::Even;            // even timing: every line there is room for
+  CHECK(voice.source().sheetLines(p, 33) == 20);
+  p.voice.sheet.scanlines = 160;
+  CHECK(voice.source().sheetLines(p, 33) == 62);
 }
 
 TEST_CASE("Function sheets: pitch, picture and hard rest", "[function][acceptance]") {

@@ -62,7 +62,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout layout() {
   l.add(choice("sheet", "Sheet: Style", {"Lines", "Sheet"}, 0));
   l.add(whole("scanlines", "Sheet: Scanlines", 8, 160, 64));
   l.add(num("shading", "Sheet: Shading", Range(0.0f, 1.0f, 0.01f), 0.7f, "", 2));
-  l.add(whole("interlace", "Sheet: Interlace", 1, 4, 1));
+  l.add(choice("interlace", "Sheet: Interlace", {"Off", "2", "4"}, 0)); // 3 would repeat the picture every third period
   l.add(num("fillShare", "Sheet: Fill share", Range(0.2f, 0.95f, 0.01f), 0.6f, "", 2));
   l.add(num("lineWidth", "Sheet: Line width", Range(0.005f, 0.08f, 0.001f), 0.025f, "", 3));
 
@@ -271,7 +271,7 @@ private:
     p.voice.sheet.style = static_cast<cs::SheetParams::Style>(i("sheet"));
     p.voice.sheet.scanlines = i("scanlines");
     p.voice.sheet.shading = v("shading");
-    p.voice.sheet.interlace = i("interlace");
+    p.voice.sheet.interlace = 1 << i("interlace"); // 1, 2, 4
     p.voice.sheet.fillShare = v("fillShare");
     p.voice.sheet.width = v("lineWidth");
     p.instrument = static_cast<cs::Instrument>(instrument());
@@ -370,7 +370,7 @@ private:
          {{"instrument", 3}, {"f_range", 3.0f}, {"f_height", 0.6f}, {"f_lines", 14}, {"f_hidden", 1}, {"f_azimuth", 35},
           {"f_elevation", 30}, {"f_perspective", 0.2f}, {"f_spin", 15}, {"release", 200}}},
         {"Function: lit sheet",
-         {{"instrument", 3}, {"sheet", 1}, {"scanlines", 64}, {"shading", 0.8f}, {"interlace", 2}, {"f_range", 3.0f},
+         {{"instrument", 3}, {"sheet", 1}, {"scanlines", 64}, {"shading", 0.8f}, {"interlace", 1}, {"f_range", 3.0f},
           {"f_height", 0.6f}, {"f_hidden", 1}, {"f_azimuth", 35}, {"f_elevation", 30}, {"f_perspective", 0.2f}, {"f_spin", 10},
           {"release", 200}}},
         {"Collision: by velocity",

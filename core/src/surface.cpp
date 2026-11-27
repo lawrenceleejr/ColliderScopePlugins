@@ -93,13 +93,11 @@ std::vector<Stroke> surfaceStrokes(const Expression& f, const SurfaceParams& par
   return out;
 }
 
-Path surfaceSheet(const Expression& f, const SurfaceParams& params, double t, double spinDegrees, int lines, int offset,
-                  int stride) {
+std::vector<Path> surfaceRows(const Expression& f, const SurfaceParams& params, double t, double spinDegrees, int lines) {
   Camera camera = params.camera;
   camera.azimuth += spinDegrees;
   const View view(camera, kExtent * std::sqrt(3.0));
-  lines = std::clamp(lines, 2, 400);
-  stride = std::max(1, stride);
+  lines = std::clamp(lines, 2, 640);
   const double range = params.range, height = params.height;
   auto z = [&](double u, double v) { return std::clamp(f.valid() ? f.eval(u * range, v * range, t) * height : 0.0, -1.0, 1.0); };
 
@@ -111,9 +109,20 @@ Path surfaceSheet(const Expression& f, const SurfaceParams& params, double t, do
   // How much light each point gets, from a lamp above and to one side of the
   // surface. The beam's dwell follows it, so that is how bright the sheet is there.
   const double shading = std::clamp(params.voice.sheet.shading, 0.0, 1.0);
-  auto weight = [&](double u, double v) {
-    constexpr double h = 0.02;
-    const double dzdu = (z(u + h, v) - z(u - h, v)) / (2.0 * h), dzdv = (z(u, v + h) - z(u, v - h)) / (2.0 * h);
+  // The surface on a grid, once: the lines, and one more beyond each end
+  // each way, for the slopes. One evaluation a point.
+  const int across = lines + 2, along = kSamples + 3;
+  std::vector<double> grid(static_cast<std::size_t>(across * along));
+  const double da = 2.0 / kSamples, df = 2.0 / (lines - 1);
+  for (int j = 0; j < across; ++j)
+    for (int i = 0; i < along; ++i) {
+      const double fixed = -1.0 + (j - 1) * df, run = -1.0 + (i - 1) * da;
+      grid[static_cast<std::size_t>(j * along + i)] = alongX ? z(run, fixed) : z(fixed, run);
+    }
+  auto at = [&](int j, int i) { return grid[static_cast<std::size_t>((j + 1) * along + (i + 1))]; };
+  auto weight = [&](int j, int i) {
+    const double dRun = (at(j, i + 1) - at(j, i - 1)) / (2.0 * da), dFixed = (at(j + 1, i) - at(j - 1, i)) / (2.0 * df);
+    const double dzdu = alongX ? dRun : dFixed, dzdv = alongX ? dFixed : dRun;
     Vec3 n{-dzdu, -dzdv, 1.0};
     const double len = std::sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
     n = {n.x / len, n.y / len, n.z / len};
@@ -129,16 +138,16 @@ Path surfaceSheet(const Expression& f, const SurfaceParams& params, double t, do
     double depth = 0.0;
   };
   std::vector<Line> scan;
-  for (int j = offset % stride; j < lines; j += stride) {
-    const double fixed = -1.0 + 2.0 * j / (lines - 1);
+  for (int j = 0; j < lines; ++j) {
+    const double fixed = -1.0 + j * df;
     Line line;
     line.points.resize(kSamples + 1);
     line.weights.resize(kSamples + 1);
     for (int i = 0; i <= kSamples; ++i) {
-      const double along = -1.0 + 2.0 * i / kSamples;
-      const double u = alongX ? along : fixed, v = alongX ? fixed : along;
-      line.points[static_cast<std::size_t>(i)] = view.project({u * kExtent, v * kExtent, z(u, v) * kExtent});
-      line.weights[static_cast<std::size_t>(i)] = weight(u, v);
+      const double run = -1.0 + i * da;
+      const double u = alongX ? run : fixed, v = alongX ? fixed : run;
+      line.points[static_cast<std::size_t>(i)] = view.project({u * kExtent, v * kExtent, at(j, i) * kExtent});
+      line.weights[static_cast<std::size_t>(i)] = weight(j, i);
     }
     line.depth = alongX ? view.project({0.0, fixed, 0.0}).z : view.project({fixed, 0.0, 0.0}).z;
     scan.push_back(std::move(line));
@@ -147,19 +156,25 @@ Path surfaceSheet(const Expression& f, const SurfaceParams& params, double t, do
   std::sort(scan.begin(), scan.end(), [](const Line& a, const Line& b) { return a.depth > b.depth; });
   std::vector<double> upper(kColumns, -1e9), lower(kColumns, 1e9), newUpper, newLower;
   auto column = [](double x) { return std::clamp(static_cast<int>((x + kScreen) / (2.0 * kScreen) * kColumns), 0, kColumns - 1); };
-  Path path;
-  bool reverse = false;
-  std::vector<Path> runs;
+  std::vector<Path> rows;
+  rows.reserve(scan.size());
+  Path run;
   for (const Line& line : scan) {
     newUpper = upper;
     newLower = lower;
-    runs.clear();
-    Path run;
+    Path row;
     auto flush = [&] {
-      if (run.size() >= 2)
-        runs.push_back(run);
+      if (run.size() >= 2) {
+        run[0].pen = false; // the jump into a run
+        row.insert(row.end(), run.begin(), run.end());
+      }
       run.clear();
     };
+    // The test runs column by column, but a point is kept only where a run
+    // starts or ends and at the ends of the line's own pieces: the beam goes
+    // straight between them anyway.
+    bool pending = false;
+    PathPoint last{};
     for (std::size_t i = 0; i + 1 < line.points.size(); ++i) {
       const Vec3 a = line.points[i], b = line.points[i + 1];
       const float wa = line.weights[i], wb = line.weights[i + 1];
@@ -168,33 +183,48 @@ Path surfaceSheet(const Expression& f, const SurfaceParams& params, double t, do
         const double u = static_cast<double>(k) / steps;
         const double x = a.x + (b.x - a.x) * u, y = a.y + (b.y - a.y) * u;
         const auto c = static_cast<std::size_t>(column(x));
-        if (!params.hidden || y >= upper[c] || y <= lower[c])
-          run.push_back({x, y, true, wa + (wb - wa) * static_cast<float>(u)});
-        else
+        if (!params.hidden || y >= upper[c] || y <= lower[c]) {
+          const PathPoint q{x, y, true, wa + (wb - wa) * static_cast<float>(u)};
+          if (run.empty() || k == steps) {
+            run.push_back(q);
+            pending = false;
+          } else {
+            last = q;
+            pending = true;
+          }
+        } else {
+          if (pending)
+            run.push_back(last);
+          pending = false;
           flush();
+        }
         newUpper[c] = std::max(newUpper[c], y);
         newLower[c] = std::min(newLower[c], y);
       }
     }
+    if (pending)
+      run.push_back(last);
     flush();
     upper.swap(newUpper);
     lower.swap(newLower);
-    // To and fro: every other line is drawn the other way, so the beam does
-    // not fly back across the sheet between lines.
-    if (reverse) {
-      std::reverse(runs.begin(), runs.end());
-      for (Path& r : runs)
-        std::reverse(r.begin(), r.end());
-    }
-    for (Path& r : runs) {
-      // The weight belongs to the segment arriving at a point: after a
-      // reversal, move each one along by a point.
-      if (reverse)
-        for (std::size_t i = 0; i + 1 < r.size(); ++i)
-          r[i].weight = r[i + 1].weight;
-      r[0].pen = false; // the jump into a run
-      path.insert(path.end(), r.begin(), r.end());
-    }
+    rows.push_back(std::move(row));
+  }
+  return rows;
+}
+
+Path surfaceSheet(const Expression& f, const SurfaceParams& params, double t, double spinDegrees, int lines, int offset,
+                  int stride) {
+  stride = std::max(1, stride);
+  std::vector<Path> all = surfaceRows(f, params, t, spinDegrees, lines);
+  // To and fro: every other line is drawn the other way, so the beam does
+  // not fly back across the sheet between lines.
+  Path path;
+  bool reverse = false;
+  for (std::size_t k = static_cast<std::size_t>(offset % stride); k < all.size(); k += static_cast<std::size_t>(stride)) {
+    Path& row = all[k];
+    if (reverse)
+      reverseRow(row);
+    path.insert(path.end(), row.begin(), row.end());
     reverse = !reverse;
   }
   return path;
@@ -253,15 +283,26 @@ void SurfaceSource::birth(const Params& params, int, int, std::uint32_t) { compi
 
 int SurfaceSource::sheetLines(const Params& params, int note) const noexcept {
   const double samplesPerPeriod = sampleRate_ / midiToHz(note);
+  if (params.voice.timing == Timing::Harmonic)
+    return planSheet(params.voice.sheet, samplesPerPeriod, false).rows;
   return std::clamp(std::min(params.voice.sheet.scanlines, static_cast<int>(samplesPerPeriod / 14.0)), 6, 160);
 }
 
 void SurfaceSource::build(const Params& params, int note, double age, std::span<XY> table) {
   compile(params); // the function can be edited while a note sounds
   if (params.voice.sheet.style == SheetParams::Style::Sheet) {
-    const int stride = std::clamp(params.voice.sheet.interlace, 1, 4);
-    const int lines = sheetLines(params, note) * stride; // interlaced, each frame has the lines a period has room for
-    const Path path = surfaceSheet(expression_, params, age, params.spin * age, lines, static_cast<int>(frame_++ % static_cast<std::uint32_t>(stride)), stride);
+    const int stride = interlaceStride(params.voice.sheet.interlace);
+    const int lines = sheetLines(params, note); // a frame's lines; interlaced, the sheet has stride times as many
+    const int offset = static_cast<int>(frame_++ % static_cast<std::uint32_t>(stride));
+    if (params.voice.timing == Timing::Harmonic) {
+      // Equal time a line, on a consonant sweep, the lines spaced so the shading holds.
+      const std::vector<Path> fine =
+          surfaceRows(expression_, params, age, params.spin * age, std::min(320, 3 * lines * stride / 2));
+      std::vector<Segment> segments = harmonicSegments(pickRows(fine, lines, offset, stride), 1.0, Path{});
+      buildTable(segments, table);
+      return;
+    }
+    const Path path = surfaceSheet(expression_, params, age, params.spin * age, lines * stride, offset, stride);
     if (path.empty()) {
       std::fill(table.begin(), table.end(), XY{});
       return;

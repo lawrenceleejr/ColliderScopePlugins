@@ -682,3 +682,89 @@ TEST_CASE("Script: Write time writes the line out from left to right", "[script]
   CHECK(rightmost(0.05) < -0.3);
   CHECK(rightmost(0.55) > 0.7);
 }
+
+// The consonant share of a sound's energy over its first `top` harmonics,
+// from the 4th up: where a sheet's buzz lives.
+double highConsonance(const Render& r, double f0, int top) {
+  const auto from = static_cast<std::size_t>(0.3 * kSampleRate);
+  const auto count = static_cast<std::size_t>(std::floor(0.2 * f0) / f0 * kSampleRate); // whole periods
+  double weighted = 0.0, total = 0.0;
+  for (int k = 4; k <= top; ++k) {
+    // A rotating phasor: one cos/sin per harmonic, not per sample.
+    const double step = 2.0 * kPi * k * f0 / kSampleRate;
+    const double c = std::cos(step), sn = std::sin(step);
+    double pr = 1.0, pi = 0.0, xr = 0, xi = 0, yr = 0, yi = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+      xr += r.x[from + i] * pr;
+      xi += r.x[from + i] * pi;
+      yr += r.y[from + i] * pr;
+      yi += r.y[from + i] * pi;
+      const double nr = pr * c - pi * sn;
+      pi = pr * sn + pi * c;
+      pr = nr;
+    }
+    const double energy = xr * xr + xi * xi + yr * yr + yi * yi;
+    weighted += cs::harmonicWeight(k) * energy;
+    total += energy;
+  }
+  return total > 0.0 ? weighted / total : 0.0;
+}
+
+TEST_CASE("Sheets: harmonic timing puts the scanline buzz on a consonant harmonic", "[sheet][harmonic]") {
+  SECTION("the plan: an even number of rows, a sweep on 2^n or 3 x 2^n, under the ceiling") {
+    for (double samples : {200.0, 436.0, 872.0, 1744.0, 3000.0})
+      for (int scanlines : {8, 20, 64, 160})
+        for (double share : {0.2, 0.45, 0.6, 0.95})
+          for (bool withLines : {false, true}) {
+            cs::SheetParams p;
+            p.scanlines = scanlines;
+            p.fillShare = share;
+            const cs::SheetPlan plan = cs::planSheet(p, samples, withLines);
+            CAPTURE(samples, scanlines, share, withLines, plan.rows, plan.harmonic, plan.share);
+            CHECK(plan.rows % 2 == 0);
+            CHECK(plan.rows <= std::max(4, std::min(scanlines, static_cast<int>(samples * (withLines ? share : 1.0) / 14.0))));
+            int h = plan.harmonic;
+            while (h % 2 == 0)
+              h /= 2;
+            CHECK((h == 1 || h == 3));
+            CHECK_THAT(plan.rows / (2.0 * plan.share), Catch::Matchers::WithinRel(static_cast<double>(plan.harmonic), 1e-9));
+            if (withLines) {
+              CHECK(std::abs(plan.share - share) <= 1.0 / plan.harmonic + 0.15 * (plan.rows <= 4));
+              CHECK(plan.share <= 0.97);
+            } else {
+              CHECK(plan.share == 1.0);
+            }
+          }
+  }
+  SECTION("every instrument: more of the buzz on consonant harmonics than with even timing") {
+    const double f0 = cs::midiToHz(33);
+    std::string report;
+    for (int i = 0; i < cs::kInstrumentCount; ++i) {
+      cs::MultiParams p;
+      p.instrument = static_cast<cs::Instrument>(i);
+      p.script.setText("E = mc^2");
+      p.surface.setFunction("sin(x) * cos(y)");
+      p.surface.spin = 0.0;
+      p.orbital.spin = 0.0;
+      p.mesh.spin = 0.0;
+      p.gallery.scene = cs::Scene::HiggsPotential;
+      p.gallery.spin = 0.0;
+      p.tracker.stage = cs::TrackerStage::Module;
+      p.tracker.spin = 0.0;
+      p.collision.spin = 0.0;
+      p.feynman.motion = 0.0;
+      p.voice.sheet.style = cs::SheetParams::Style::Sheet;
+      double c[2];
+      for (int t = 0; t < 2; ++t) {
+        p.voice.timing = t == 0 ? cs::Timing::Even : cs::Timing::Harmonic;
+        cs::MultiEngine voice;
+        c[t] = highConsonance(play(voice, p, 33, 80, 0.6, 0.0), f0, 256);
+      }
+      CAPTURE(i, c[0], c[1]);
+      report += " " + std::to_string(i) + ": " + std::to_string(c[0]) + " -> " + std::to_string(c[1]) + ";";
+      CHECK(c[1] > c[0]);
+    }
+    WARN("consonant share of harmonics 4-256 of a sheet, even -> harmonic timing, by instrument:" << report);
+  }
+}
+

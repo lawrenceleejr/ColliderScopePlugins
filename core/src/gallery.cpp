@@ -554,7 +554,7 @@ void GallerySource::build(const Params& params, int note, double age, std::span<
   std::vector<Stroke> strokes = sceneStrokes(params, age, energy_, seed_);
   if (params.voice.sheet.style == SheetParams::Style::Sheet) {
     fills_ = sceneFills(params, age, strokes);
-    sheet_.build(params.voice.sheet, note, fills_, strokes, table);
+    sheet_.build(params.voice.sheet, note, fills_, strokes, table, params.voice.timing == Timing::Harmonic);
     return;
   }
   if (strokes.empty()) {

@@ -218,7 +218,7 @@ void FeynmanSource::build(const Params& params, int note, double age, std::span<
   if (params.voice.sheet.style == SheetParams::Style::Sheet) {
     fills_.clear();
     ribbons(strokes_, params.voice.sheet.width, 0.85f, fills_, true); // solid lines, and the vertices as discs
-    sheet_.build(params.voice.sheet, note, fills_, strokes_, table);
+    sheet_.build(params.voice.sheet, note, fills_, strokes_, table, params.voice.timing == Timing::Harmonic);
     return;
   }
   if (params.voice.timing == Timing::Harmonic) {

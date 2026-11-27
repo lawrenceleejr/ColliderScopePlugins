@@ -225,7 +225,7 @@ void OrbitalSource::build(const Params& params, int note, double age, std::span<
           quad.shade = lampShade({u.y * w.z - u.z * w.y, u.z * w.x - u.x * w.z, u.x * w.y - u.y * w.x});
           fills_.push_back(std::move(quad));
         }
-    sheet_.build(params.voice.sheet, note, fills_, strokes_, table);
+    sheet_.build(params.voice.sheet, note, fills_, strokes_, table, params.voice.timing == Timing::Harmonic);
     return;
   }
   if (params.voice.timing == Timing::Harmonic) {

@@ -44,6 +44,9 @@ std::vector<Stroke> surfaceStrokes(const Expression& f, const SurfaceParams& par
 
 // The filled sheet: scanlines `offset`, `offset + stride`, ... of `lines`, as
 // one path with per-point dwell weights. Exposed for tests and offline use.
+// The sheet's scanlines, nearest first, each drawn the same way, with
+// hidden parts removed; a line with nothing showing is an empty path.
+std::vector<Path> surfaceRows(const Expression& f, const SurfaceParams& params, double t, double spinDegrees, int lines);
 Path surfaceSheet(const Expression& f, const SurfaceParams& params, double t, double spinDegrees, int lines, int offset = 0,
                   int stride = 1);
 

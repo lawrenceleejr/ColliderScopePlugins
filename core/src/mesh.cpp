@@ -318,7 +318,7 @@ void MeshSource::build(const Params& params, int note, double age, std::span<XY>
   std::vector<Stroke> strokes = meshStrokes(*current, params, params.spin * age);
   if (params.voice.sheet.style == SheetParams::Style::Sheet) {
     fills_ = meshFaces(*current, params, params.spin * age); // shaded faces, with the outline and creases over them
-    sheet_.build(params.voice.sheet, note, fills_, strokes, table);
+    sheet_.build(params.voice.sheet, note, fills_, strokes, table, params.voice.timing == Timing::Harmonic);
     return;
   }
   if (strokes.empty()) {

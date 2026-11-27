@@ -149,20 +149,38 @@ What gets filled depends on the instrument:
 | Sheet | Style | Lines: the picture as lines. Sheet: filled in. |
 | | Scanlines | The most scanlines across the picture. |
 | | Shading | How strongly the lamp shades a surface. 0 is flat. |
-| | Interlace | Draw every n-th scanline each frame. |
+| | Interlace | Off, 2 or 4: draw every n-th scanline each frame. |
 | | Fill share | How much of each period goes to the fill; the rest draws the lines over it. |
 | | Line width | How wide a line is when it is filled as a band. |
 
 A sheet needs time to draw. A period of a low note is long, with room for many scanlines; a high
 note has few samples a period and the sheet thins to a handful of lines (Scanlines is a ceiling:
-the instrument uses at most one line per 14 samples of the period, so about 60 at A1 and 15 at A3).
-Interlace trades this back: with Interlace at 2 to 4, each frame draws a different share of the
-lines, and the scope's persistence blends them into the whole sheet. The cost is in the sound: the
-picture now repeats every two to four frames, which adds a flutter under the note, and on a scope
-with short persistence the sheet will shimmer. For the fullest sheet, play low and interlace.
+the instrument uses at most one line per 14 samples of the fill's share of the period, so about 60
+at A1 and 15 at A3 for a whole-period fill). Interlace trades this back: at 2 or 4, each frame
+draws a different share of the lines, and the scope's persistence blends them into the whole
+sheet. The cost is in the sound: the picture now repeats every two or four periods, which adds a
+flutter an octave or two below the note, and on a scope with short persistence the sheet will
+shimmer. (There is no 3: a picture that repeats every third period puts a tone an octave and a
+fifth below the note.) For the fullest sheet, play low and interlace.
 
-A sheet sounds different from lines: a raster is a buzz rich in high harmonics, and the
-lines drawn over it add the picture's own tone. Fill share sets the balance.
+**How a sheet sounds.** Each scanline sweeps the beam across and the next sweeps it back, so a
+sheet adds a buzz at half the rate it draws lines. With Timing set to Harmonic (the default), the
+instrument makes that buzz consonant:
+
+- Every scanline gets the same time, so the sweep is steady and the buzz is one strong harmonic
+  rather than a cluster of neighbours.
+- The number of scanlines is chosen so that harmonic is 2^n or 3 x 2^n times the note: the
+  note itself some octaves up, or a fifth above an octave. At A1 with the default settings a
+  Function sheet draws 48 lines, a sweep at 24 times the note. This can mean fewer lines than
+  Scanlines allows, by up to a third.
+- When there are lines over the fill, Fill share is moved a little, so the sweep lands exactly
+  on its harmonic.
+- So that equal time does not make short lines brighter than long ones, the lines are spaced to
+  suit the picture: closer where it is wide, further apart where it is narrow (at most about three
+  times the mean spacing, so a thin stroke is not missed).
+
+With Timing set to Even, every line there is room for is drawn, evenly spaced, each taking time in
+proportion to its length: the most lines, and a buzzier, less tuned sound.
 
 ### Bubble
 

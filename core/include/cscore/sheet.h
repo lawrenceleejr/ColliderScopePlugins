@@ -23,7 +23,8 @@ struct SheetParams {
   enum class Style { Lines, Sheet } style = Style::Lines;
   int scanlines = 64;      // 8-160: the most scanlines; a short period has room for fewer
   double shading = 0.7;    // 0-1: how strongly the light shades the fill; 0 is flat
-  int interlace = 1;       // 1-4: draw every n-th scanline each frame, moving on a line each frame
+  int interlace = 1;       // 1, 2 or 4: draw every n-th scanline each frame, moving on a line each frame
+                           // (3 is taken as 2: the picture would repeat every third period, a twelfth below the note)
   double fillShare = 0.6;  // 0.2-0.95: the share of each period spent on the fill, the rest on the lines
   double width = 0.025;    // 0.005-0.08: how wide lines are when filled in as ribbons
 };
@@ -39,6 +40,50 @@ struct FillPolygon {
 // The fill as scanlines `offset`, `offset + stride`, ... of `rows`, spread
 // over the polygons' height, to and fro, with dwell weights from the shades.
 Path rasterSheet(std::span<const FillPolygon> fills, int rows, int offset = 0, int stride = 1, double shading = 0.7);
+
+// The same `rows` evenly spread scanlines, top to bottom, each its own path,
+// all drawn left to right; a run starts with a jump (pen = false). A line
+// that crosses nothing is an empty path, so the spacing is kept.
+std::vector<Path> rasterRows(std::span<const FillPolygon> fills, int rows, double shading = 0.7);
+
+// The interlace as a stride: 1, 2 or 4.
+int interlaceStride(int interlace) noexcept;
+
+// A row's drawn length, each piece times its dwell weight.
+double rowLength(const Path& row) noexcept;
+// A row drawn the other way: its runs in reverse order, each reversed.
+void reverseRow(Path& row);
+
+// Harmonic sheets. A scanline sweeps the beam across and the next sweeps it
+// back, so the fill puts a buzz into the sound at half the rate it draws
+// lines. Left to itself that rate wanders, since long lines take longer
+// than short ones, and the buzz smears over a cluster of neighbouring
+// harmonics. A harmonic sheet gives every scanline the same time, so the
+// sweep is steady, and chooses the number of lines so it lands on a
+// consonant harmonic of the note: 2^n or 3 * 2^n times it (octaves, and
+// fifths above octaves), as the Harmonic timing grid does.
+//
+// Equal time for a short line would make it brighter than a long one. To
+// keep the shading true, the lines are spaced to suit: each covers an equal
+// share of the picture's weighted width, so they crowd where it is wide and
+// spread where it is narrow (but no more than about three times the mean
+// spacing, so thin strokes do not fall between them).
+struct SheetPlan {
+  int rows = 0;      // scanlines a frame draws (even, so a period ends where it began)
+  int harmonic = 0;  // the sweep's harmonic of the note: rows / (2 * share)
+  double share = 1;  // the fill's exact share of the period
+};
+// Plans a period: the most rows that fit the ceiling (Scanlines, and about
+// 14 samples a line) with a consonant sweep, and the fill share, moved
+// slightly from the one asked for so the harmonic is exact.
+SheetPlan planSheet(const SheetParams& params, double samplesPerPeriod, bool withLines) noexcept;
+// Picks `count * stride` rows from `fine` so each covers an equal share of
+// the weighted width, keeps every stride-th from `offset`, and turns every
+// other one round so the beam goes to and fro. Only rows with something on
+// them are picked.
+std::vector<Path> pickRows(const std::vector<Path>& fine, int count, int offset = 0, int stride = 1);
+// The rows, each with an equal share of `share`, followed by `over` with the rest.
+std::vector<Segment> harmonicSegments(std::vector<Path>&& rows, double share, Path&& over);
 
 bool isClosed(const Stroke& stroke) noexcept;
 // Closed strokes become filled polygons.
@@ -58,9 +103,11 @@ public:
   // Scanlines a frame can use for a note: as many as asked for, but no more
   // than the fill's share of a period has room for, about 14 samples a line.
   int lines(const SheetParams& params, int note, bool withLines) const noexcept;
-  // The table: the fill, then the lines over it.
+  // The table: the fill, then the lines over it. Harmonic (Timing:
+  // Harmonic) gives every scanline equal time on a consonant sweep; Even
+  // spreads time along the scanlines by length.
   void build(const SheetParams& params, int note, std::span<const FillPolygon> fills, const std::vector<Stroke>& lines,
-             std::span<XY> table);
+             std::span<XY> table, bool harmonic = true);
 
 private:
   double sampleRate_ = 48000.0;

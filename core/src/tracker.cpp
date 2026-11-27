@@ -305,7 +305,7 @@ void TrackerSource::build(const Params& params, int note, double age, std::span<
     fills_.clear();
     fillClosed(frame_.strokes, 0.4f, fills_);
     ribbons(frame_.strokes, params.voice.sheet.width, 0.9f, fills_, false, 4); // the stubs: short and bright
-    sheet_.build(params.voice.sheet, note, fills_, frame_.strokes, table);
+    sheet_.build(params.voice.sheet, note, fills_, frame_.strokes, table, params.voice.timing == Timing::Harmonic);
     return;
   }
   if (frame_.strokes.empty()) {
