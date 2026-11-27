@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# The command-line renders CI keeps as artifacts: a WAV and a PNG per feature.
+# usage: tools/render_tests.sh <path to csrender> <output directory>
+set -euo pipefail
+csrender=$1
+out=$2
+mkdir -p "$out"
+
+# One note per track type, default Shared wall; the scope 0.6 s into the note.
+"$csrender" notes --notes 57:0:1.2:80  --type alpha    --seed 4 --at 0.6 --out "$out/chamber_alpha"
+"$csrender" notes --notes 45:0:1.2:120 --type muon     --seed 4 --at 0.6 --out "$out/chamber_muon"
+"$csrender" notes --notes 69:0:1.2:40  --type electron --seed 4 --at 0.6 --out "$out/chamber_electron"
+# The track alone, young and old: diffusion is the hiss.
+"$csrender" notes --notes 57:0:1.8:80 --type alpha --wall off --seed 4 --at 0.15 --out "$out/chamber_alpha_off_young"
+"$csrender" notes --notes 57:0:1.8:80 --type alpha --wall off --seed 4 --at 1.7  --out "$out/chamber_alpha_off_old"
+# Drone: the wall hums at A1, the track rings as overtone 4 (A3).
+"$csrender" notes --notes 57:0:1.2:40 --type electron --wall drone --root 33 --seed 4 --at 0.6 --out "$out/chamber_drone_h4"
+# A short melody with hard rests, velocity picking the type.
+"$csrender" notes --notes 57:0:0.4:80,60:0.5:0.4:40,64:1.0:0.4:120,69:1.5:0.8:80 --seed 7 --out "$out/chamber_melody"
+# Polyphony: A2, A3, E4 are overtones 1, 2, 3 of A2; then a close triad over the A1 drone.
+"$csrender" notes --voices 4 --notes 45:0:1.2:120,57:0:1.2:80,64:0:1.2:40 --wall off --seed 4 --at 0.6 --out "$out/chamber_poly_overtones"
+"$csrender" notes --voices 4 --notes 57:0:1.2:80,61:0:1.2:80,64:0:1.2:40 --wall drone --seed 4 --at 0.6 --out "$out/chamber_poly_drone_triad"
+# CS Bubble: one event of each kind, 0.9 s into the note, and a pair when it is young (dots).
+for event in electron pair decay beam; do
+  "$csrender" notes --instrument bubble --type "$event" --notes 57:0:1.2:80 --seed 5 --at 0.9 --out "$out/bubble_$event"
+done
+"$csrender" notes --instrument bubble --type pair --notes 57:0:0.3:80 --seed 5 --at 0.12 --out "$out/bubble_pair_young"
+# CS Orbital: one orbital of each kind.
+for orbital in 1s 2s 2pz 2px 3dz2 3dxz 4fz3 4fxz2; do
+  "$csrender" notes --instrument orbital --orbital "$orbital" --notes 57:0:1.2:80 --at 0.6 --out "$out/orbital_$orbital"
+done
+# CS Script: text and equations.
+"$csrender" notes --instrument script --text 'E = mc^2' --notes 57:0:0.6:80 --at 0.4 --out "$out/script_emc2"
+"$csrender" notes --instrument script --text '\frac{\partial\psi}{\partial t} = \hat{H}\psi' --notes 57:0:0.6:80 --at 0.4 --out "$out/script_schrodinger"
+"$csrender" notes --instrument script --text '\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}' --notes 57:0:0.6:80 --at 0.4 --out "$out/script_gaussian"
+"$csrender" notes --instrument script --text 'ColliderScope\\\alpha\beta\gamma \to \Omega' --slant 0.2 --write 500 --notes 45:0:0.8:80 --at 0.7 --out "$out/script_two_lines"
+# Function: z = f(x, y), with and without hidden lines.
+"$csrender" notes --instrument function --function 'sin(3*r - 4*t) / (1 + r)' --notes 57:0:1:80 --at 0.5 --out "$out/function_ripples"
+"$csrender" notes --instrument function --function 'gauss(r/1.5) * cos(3*x)' --spin 0 --notes 57:0:1:80 --at 0.5 --out "$out/function_packet"
+"$csrender" notes --instrument function --function 'x*y/3' --hidden 0 --spin 0 --notes 57:0:1:80 --at 0.5 --out "$out/function_saddle_see_through"
+# Collision: one event of each kind.
+for event in minbias dijet zmumu multijet fourmuon; do
+  "$csrender" notes --instrument collision --event "$event" --seed 3 --notes 57:0:1:80 --at 0.6 --out "$out/collision_$event"
+done
+# Collision in 3D: helices in a barrel.
+for event in dijet fourmuon; do
+  "$csrender" notes --instrument collision --3d 1 --spin 0 --event "$event" --seed 3 --notes 57:0:1:80 --at 0.6 --out "$out/collision_3d_$event"
+done
+# Feynman: every diagram.
+for diagram in 1 2 3 4 5 6 7 8 9 10; do
+  "$csrender" notes --instrument feynman --diagram "$diagram" --motion 0 --notes 57:0:0.6:80 --at 0.5 --out "$out/feynman_$diagram"
+done
+# Scenes: every one.
+for scene in tracking-planes wire-chamber calorimeter-shower cherenkov-rings spark-chamber betatron cyclotron \
+             bunch-crossings flux-tube higgs-potential neutrino-oscillation eightfold-way; do
+  "$csrender" notes --instrument scenes --scene "$scene" --notes 57:0:1.2:100 --at 0.9 --out "$out/scene_$scene"
+done
+# The CMS tracker: each stage held, and both module types exploded.
+for stage in module exploded tracker tracks; do
+  "$csrender" notes --instrument tracker --stage "$stage" --spin 0 --notes 57:0:1.5:100 --at 1.2 --out "$out/cms_$stage"
+done
+"$csrender" notes --instrument tracker --stage exploded --module ps --spin 0 --notes 57:0:1.5:100 --at 1.2 --out "$out/cms_exploded_ps"
+# Mesh: the built-in torus from two cameras.
+"$csrender" notes --instrument mesh --notes 57:0:1:80 --at 0.5 --out "$out/mesh_torus"
+"$csrender" notes --instrument mesh --elevation 60 --perspective 0.8 --axis x --notes 57:0:1:80 --at 0.5 --out "$out/mesh_torus_close"
+# Timing: the same orbital with even and with harmonic timing.
+"$csrender" notes --instrument orbital --orbital 3dxz --timing even --notes 57:0:1.2:80 --at 0.6 --out "$out/orbital_3dxz_even"
+# Drum hits, each in its own slot.
+"$csrender" hit kick  --out "$out/hit_kick"
+"$csrender" hit snare --out "$out/hit_snare"
+"$csrender" hit crash --out "$out/hit_crash"
+# CS Mux: a circle at 55 Hz and a square at 220 Hz share the beam.
+"$csrender" shape circle --hz 55  --size 0.8 --dur 2 --out "$out/in_circle"
+"$csrender" shape square --hz 220 --size 0.3 --dur 2 --out "$out/in_square"
+"$csrender" mux "$out/in_circle.wav" "$out/in_square.wav" --mode interleave --at 1.5 --out "$out/mux_interleave"
+"$csrender" mux "$out/in_circle.wav" "$out/in_square.wav" --mode interleave --switch closest --at 1.5 --out "$out/mux_interleave_closest"
+"$csrender" mux "$out/in_circle.wav" "$out/in_square.wav" --mode lock --at 1.5 --out "$out/mux_cycle_lock"
+# Slot: the Chamber melody keeps the beam; kick, snare and crash each take a slot.
+"$csrender" mux "$out/chamber_melody.wav" "$out/in_square.wav" --mode slot --sensitivity 0 \
+  --hits kick:0.0,snare:0.25,kick:0.5,snare:0.75,kick:1.0,crash:1.5 --out "$out/mux_slot_drums"
+"$csrender" mux "$out/chamber_melody.wav" "$out/in_square.wav" --mode slot --sensitivity 0 --hits kick:1.0 --at 1.05 --out "$out/mux_slot_kick"
+# Round trip: a picture drawn from a WAV on disk.
+"$csrender" view "$out/chamber_alpha.wav" --at 0.6 --out "$out/view_roundtrip"
+# Sheets: every instrument filled in, low enough (A1) for a full raster.
+"$csrender" notes --style sheet --instrument bubble --type pair --seed 5 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_bubble"
+"$csrender" notes --style sheet --instrument orbital --orbital 3dz2 --spin 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_orbital"
+"$csrender" notes --style sheet --instrument script --text 'E = mc^2' --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_script"
+"$csrender" notes --style sheet --instrument function --function 'gauss(r/1.5) * cos(3*x)' --spin 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_function"
+"$csrender" notes --style sheet --instrument collision --event dijet --seed 3 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_collision"
+"$csrender" notes --style sheet --instrument mesh --spin 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_mesh"
+"$csrender" notes --style sheet --instrument feynman --diagram 9 --motion 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_feynman"
+"$csrender" notes --style sheet --instrument scenes --scene higgs-potential --spin 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_higgs"
+"$csrender" notes --style sheet --instrument tracker --stage exploded --spin 0 --notes 33:0:1.2:90 --at 0.9 --out "$out/sheet_cms"
+ls -la "$out"

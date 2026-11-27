@@ -1,0 +1,770 @@
+// CS Bubble and CS Orbital: the physics of what they draw, and the same
+// acceptance tests as CS Chamber (pitch, picture, hard rest).
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <vector>
+
+#include "analysis.h"
+#include "cscore/cscore.h"
+
+using Catch::Matchers::WithinAbs;
+
+namespace {
+
+constexpr double kSampleRate = 48000.0;
+constexpr double kPi = 3.14159265358979323846;
+
+struct Render {
+  std::vector<float> x, y;
+};
+
+template <typename Engine>
+Render play(Engine& voice, const typename Engine::Params& params, int note, int velocity, double held, double tail) {
+  voice.prepare(kSampleRate);
+  voice.setParams(params);
+  const auto on = static_cast<std::size_t>(held * kSampleRate), off = static_cast<std::size_t>(tail * kSampleRate);
+  Render r{std::vector<float>(on + off), std::vector<float>(on + off)};
+  voice.noteOn(note, velocity);
+  voice.process(r.x.data(), r.y.data(), static_cast<int>(on));
+  voice.noteOff(note);
+  voice.process(r.x.data() + on, r.y.data() + on, static_cast<int>(off));
+  return r;
+}
+
+template <typename Engine>
+void checkPitch(const typename Engine::Params& params, int velocity) {
+  for (int note : {33, 45, 57, 69, 81}) {
+    Engine voice;
+    const Render r = play(voice, params, note, velocity, 0.6, 0.0);
+    const double period = analysis::periodByAutocorrelation(r.x, kSampleRate, static_cast<std::size_t>(0.2 * kSampleRate),
+                                                           kSampleRate / cs::midiToHz(note));
+    CAPTURE(note);
+    CHECK(std::abs(cs::cents(kSampleRate / period, cs::midiToHz(note))) < 1.0);
+  }
+}
+
+template <typename Engine>
+void checkHardRest(const typename Engine::Params& params) {
+  Engine voice;
+  const Render r = play(voice, params, 57, 80, 0.3, 0.1);
+  const auto off = static_cast<std::size_t>(0.3 * kSampleRate);
+  CHECK(std::abs(r.x[off - 1]) + std::abs(r.y[off - 1]) > 0.005);
+  for (std::size_t i = off + 24; i < r.x.size(); ++i) { // 0.5 ms
+    REQUIRE(std::abs(r.x[i]) < 1e-4f);
+    REQUIRE(std::abs(r.y[i]) < 1e-4f);
+  }
+  CHECK(r.x.back() == 0.0f);
+  CHECK_FALSE(voice.active());
+}
+
+// Signed turning of a polyline, in radians: positive is anticlockwise.
+double turning(const std::vector<cs::Vec2>& p, std::size_t from, std::size_t to) {
+  double sum = 0.0;
+  for (std::size_t i = from + 2; i < to; ++i) {
+    const double a = std::atan2(p[i - 1].y - p[i - 2].y, p[i - 1].x - p[i - 2].x);
+    const double b = std::atan2(p[i].y - p[i - 1].y, p[i].x - p[i - 1].x);
+    sum += std::remainder(b - a, 2.0 * kPi);
+  }
+  return sum;
+}
+
+} // namespace
+
+// ------------------------------------------------------------------ CS Bubble
+
+TEST_CASE("Bubble: a charged track curls in the field and tightens as it slows", "[bubble]") {
+  const cs::BubbleTrack plus = cs::curlTrack({0.0, -0.3}, 0.0, 0.8, +1, 0.5, 0.55);
+  const cs::BubbleTrack minus = cs::curlTrack({0.0, 0.3}, 0.0, 0.8, -1, 0.5, 0.55);
+  REQUIRE(plus.points.size() > 200);
+  REQUIRE(minus.points.size() > 200);
+  CHECK(turning(plus.points, 0, plus.points.size()) > 2.0 * kPi);   // more than a full turn, anticlockwise
+  CHECK(turning(minus.points, 0, minus.points.size()) < -2.0 * kPi); // the other charge, the other way
+  // Turning per step grows: the radius of curvature shrinks with the momentum.
+  const std::size_t n = plus.points.size();
+  CHECK(turning(plus.points, n - 60, n) > 2.0 * turning(plus.points, 0, 60));
+  for (const cs::Vec2& p : plus.points)
+    CHECK(std::hypot(p.x, p.y) <= 0.9);
+  // Evenly spaced bubbles need evenly spaced points.
+  for (std::size_t i = 1; i < n; ++i)
+    CHECK_THAT(std::hypot(plus.points[i].x - plus.points[i - 1].x, plus.points[i].y - plus.points[i - 1].y), WithinAbs(0.01, 1e-9));
+  // No field to speak of, lots of momentum: nearly straight.
+  const cs::BubbleTrack beam = cs::curlTrack({-0.8, 0.0}, 0.0, 8.0, +1, 0.0, 0.05);
+  CHECK(std::abs(turning(beam.points, 0, beam.points.size())) < 0.1);
+}
+
+TEST_CASE("Bubble: velocity picks the event, and each event has its shape", "[bubble]") {
+  cs::BubbleParams p;
+  auto born = [&](int velocity, cs::BubbleType type = cs::BubbleType::Auto) {
+    p.type = type;
+    cs::BubbleSource source;
+    source.birth(p, 60, velocity, 1);
+    return source;
+  };
+  CHECK(born(30).type() == cs::BubbleType::Electron);
+  CHECK(born(60).type() == cs::BubbleType::Pair);
+  CHECK(born(100).type() == cs::BubbleType::Decay);
+  CHECK(born(120).type() == cs::BubbleType::Beam);
+
+  for (std::uint64_t seed = 1; seed <= 20; ++seed) {
+    p.seed = seed;
+    const cs::BubbleSource pair = born(60, cs::BubbleType::Pair);
+    REQUIRE(pair.tracks().size() == 2);
+    // One vertex, opposite charges, opposite curls.
+    CHECK(pair.tracks()[0].points.front().x == pair.tracks()[1].points.front().x);
+    CHECK(pair.tracks()[0].charge == -pair.tracks()[1].charge);
+    CHECK(turning(pair.tracks()[0].points, 0, pair.tracks()[0].points.size()) > 0.5);
+    CHECK(turning(pair.tracks()[1].points, 0, pair.tracks()[1].points.size()) < -0.5);
+
+    const cs::BubbleSource decay = born(100, cs::BubbleType::Decay);
+    REQUIRE(decay.tracks().size() == 2);
+    // The daughter starts where the parent stops, and curls tighter.
+    CHECK(decay.tracks()[0].points.back().x == decay.tracks()[1].points.front().x);
+    const auto& parent = decay.tracks()[0].points;
+    const auto& daughter = decay.tracks()[1].points;
+    if (daughter.size() > 40)
+      CHECK(std::abs(turning(daughter, 0, 40)) > 2.0 * std::abs(turning(parent, 0, 40)));
+
+    const cs::BubbleSource electron = born(30, cs::BubbleType::Electron);
+    REQUIRE(electron.tracks().size() == 1);
+    CHECK(std::abs(turning(electron.tracks()[0].points, 0, electron.tracks()[0].points.size())) > 1.5 * kPi);
+  }
+}
+
+TEST_CASE("Bubble: a young track is a row of dots on the particle's path", "[bubble]") {
+  cs::BubbleParams p;
+  p.type = cs::BubbleType::Electron;
+  p.growth = 0.0;
+  p.boil = 0.0;
+  p.formMs = 0.0;
+  cs::BubbleEngine voice;
+  const Render r = play(voice, p, 45, 30, 0.2, 0.0);
+  const auto& track = voice.source().tracks()[0].points;
+  std::size_t onTrack = 0;
+  for (std::size_t i = 4800; i < r.x.size(); ++i) {
+    double nearest = 1e9;
+    for (const cs::Vec2& q : track)
+      nearest = std::min(nearest, std::hypot(r.x[i] / 0.9 - q.x, r.y[i] / 0.9 - q.y)); // Size 0.9
+    onTrack += nearest < 0.02;
+  }
+  // All but the jump back from the track's end to its start.
+  CHECK(static_cast<double>(onTrack) / static_cast<double>(r.x.size() - 4800) > 0.9);
+}
+
+TEST_CASE("Bubble: bubbles grow while the note is held", "[bubble]") {
+  cs::BubbleParams p;
+  p.type = cs::BubbleType::Beam; // a line: any spread across it is bubble size
+  p.boil = 0.0;
+  p.growth = 0.05;
+  p.maxRadius = 0.04;
+  cs::BubbleEngine voice;
+  const Render r = play(voice, p, 45, 120, 1.0, 0.0);
+  const auto& track = voice.source().tracks()[0].points;
+  auto spread = [&](std::size_t from, std::size_t to) { // how far the beam strays from the path: 90th percentile
+    std::vector<double> off;
+    for (std::size_t i = from; i < to; ++i) {
+      double nearest = 1e9;
+      for (const cs::Vec2& q : track)
+        nearest = std::min(nearest, std::hypot(r.x[i] / 0.9 - q.x, r.y[i] / 0.9 - q.y));
+      off.push_back(nearest);
+    }
+    std::sort(off.begin(), off.end());
+    return off[off.size() * 9 / 10];
+  };
+  const double young = spread(4800, 7200), old = spread(43200, 48000);
+  CAPTURE(young, old);
+  CHECK(young < 0.012); // 0.1 s old: radius about 0.007
+  CHECK(old > 0.025);   // 1 s old: grown to the 0.04 limit
+  CHECK(old < 0.04 * 1.4 + 0.012); // the largest bubble, plus half a step along the track
+}
+
+TEST_CASE("Bubble: pitch, picture and hard rest", "[bubble][acceptance]") {
+  const auto type = GENERATE(cs::BubbleType::Electron, cs::BubbleType::Pair, cs::BubbleType::Decay, cs::BubbleType::Beam);
+  cs::BubbleParams p;
+  p.type = type;
+  CAPTURE(static_cast<int>(type));
+  SECTION("pitch within 1 cent on a steady picture") {
+    p.boil = 0.0;
+    p.growth = 0.0;
+    checkPitch<cs::BubbleEngine>(p, 80);
+  }
+  SECTION("within r <= 0.95, for any seed, field and age") {
+    p.voice.size = 1.0;
+    for (std::uint64_t seed = 1; seed <= 6; ++seed) {
+      p.seed = seed;
+      p.field = 0.15 * static_cast<double>(seed);
+      cs::BubbleEngine voice;
+      const Render r = play(voice, p, 57, 80, 2.0, 0.0);
+      double peak = 0.0;
+      for (std::size_t i = 0; i < r.x.size(); ++i)
+        peak = std::max(peak, analysis::radius(r.x[i], r.y[i]));
+      CHECK(peak <= 0.95);
+      CHECK(peak > 0.05);
+    }
+  }
+  SECTION("hard rest") { checkHardRest<cs::BubbleEngine>(p); }
+}
+
+// ----------------------------------------------------------------- CS Orbital
+
+TEST_CASE("Orbital: hydrogen radial functions have their nodes in the right places", "[orbital]") {
+  auto nodes = [](int n, int l) {
+    std::vector<double> found;
+    double previous = cs::hydrogenRadial(n, l, 0.05);
+    for (double r = 0.06; r < 60.0; r += 0.001) {
+      const double value = cs::hydrogenRadial(n, l, r);
+      if (value * previous < 0.0)
+        found.push_back(r);
+      previous = value;
+    }
+    return found;
+  };
+  CHECK(nodes(1, 0).empty());
+  REQUIRE(nodes(2, 0).size() == 1);
+  CHECK_THAT(nodes(2, 0)[0], WithinAbs(2.0, 0.002)); // R_20 ~ (2 - r) e^(-r/2)
+  REQUIRE(nodes(3, 0).size() == 2);
+  CHECK_THAT(nodes(3, 0)[0], WithinAbs(1.5 * (3.0 - std::sqrt(3.0)), 0.002)); // 1.902
+  CHECK_THAT(nodes(3, 0)[1], WithinAbs(1.5 * (3.0 + std::sqrt(3.0)), 0.002)); // 7.098
+  REQUIRE(nodes(3, 1).size() == 1);
+  CHECK_THAT(nodes(3, 1)[0], WithinAbs(6.0, 0.002)); // R_31 ~ r (6 - r) e^(-r/3)
+  CHECK(nodes(3, 2).empty());
+  CHECK(nodes(4, 0).size() == 3);
+  CHECK(nodes(4, 3).empty());
+  // 1s decays as e^(-r).
+  CHECK_THAT(cs::hydrogenRadial(1, 0, 2.0) / cs::hydrogenRadial(1, 0, 1.0), WithinAbs(std::exp(-1.0), 1e-12));
+}
+
+TEST_CASE("Orbital: associated Legendre functions", "[orbital]") {
+  for (double x : {-0.9, -0.3, 0.0, 0.4, 0.8}) {
+    const double s = std::sqrt(1.0 - x * x);
+    CHECK_THAT(cs::legendre(0, 0, x), WithinAbs(1.0, 1e-12));
+    CHECK_THAT(cs::legendre(1, 0, x), WithinAbs(x, 1e-12));
+    CHECK_THAT(cs::legendre(1, 1, x), WithinAbs(-s, 1e-12));
+    CHECK_THAT(cs::legendre(2, 0, x), WithinAbs(0.5 * (3 * x * x - 1), 1e-12));
+    CHECK_THAT(cs::legendre(2, 1, x), WithinAbs(-3 * x * s, 1e-12));
+    CHECK_THAT(cs::legendre(2, 2, x), WithinAbs(3 * (1 - x * x), 1e-12));
+    CHECK_THAT(cs::legendre(3, 0, x), WithinAbs(0.5 * (5 * x * x * x - 3 * x), 1e-12));
+    CHECK_THAT(cs::legendre(3, 2, x), WithinAbs(15 * x * (1 - x * x), 1e-12));
+    CHECK_THAT(cs::legendre(3, 3, x), WithinAbs(-15 * s * s * s, 1e-12));
+  }
+}
+
+TEST_CASE("Orbital: isosurfaces have the shapes of the orbitals", "[orbital]") {
+  cs::OrbitalShape shape;
+  for (const cs::OrbitalId& id : cs::kOrbitals) {
+    shape.set(id.n, id.l, id.m);
+    CAPTURE(id.name);
+    CHECK(shape.shells() == id.n - id.l); // one shell per radial lobe
+    double largest = 0.0;
+    for (int i = 0; i <= 60; ++i)
+      for (int j = 0; j < 60; ++j)
+        for (int shell = 0; shell < shape.shells(); ++shell) {
+          const double r = shape.radius(shell, 0.25, kPi * i / 60.0, 2.0 * kPi * j / 60.0);
+          REQUIRE(r >= 0.0);
+          REQUIRE(r <= 1.0 + 1e-9);
+          if (shell + 1 < shape.shells() && r > 0.0) // shells nest
+            REQUIRE(r < shape.radius(shape.shells() - 1, 0.25, kPi * i / 60.0, 2.0 * kPi * j / 60.0));
+          largest = std::max(largest, r);
+        }
+    CHECK_THAT(largest, WithinAbs(1.0, 0.01)); // the outer shell just reaches 1
+  }
+
+  SECTION("1s is a sphere") {
+    shape.set(1, 0, 0);
+    for (double theta : {0.0, 0.7, 1.5, 3.0})
+      CHECK_THAT(shape.radius(0, 0.3, theta, 1.1), WithinAbs(1.0, 1e-9));
+  }
+  SECTION("2s is a sphere within a sphere") {
+    shape.set(2, 0, 0);
+    CHECK_THAT(shape.radius(1, 0.3, 1.0, 0.0), WithinAbs(1.0, 1e-9));
+    CHECK(shape.radius(0, 0.3, 1.0, 0.0) > 0.01);
+    CHECK(shape.radius(0, 0.3, 1.0, 0.0) < 0.3);
+  }
+  SECTION("2pz: two lobes along z, nothing in the xy plane") {
+    shape.set(2, 1, 0);
+    CHECK_THAT(shape.radius(0, 0.25, 0.0, 0.0), WithinAbs(1.0, 1e-9));
+    CHECK_THAT(shape.radius(0, 0.25, kPi, 0.0), WithinAbs(1.0, 1e-9));
+    CHECK(shape.radius(0, 0.25, kPi / 2, 0.3) == 0.0);
+    CHECK(shape.radius(0, 0.25, 1.0, 0.0) < 1.0);
+    CHECK(shape.radius(0, 0.25, 1.0, 0.0) > 0.3);
+  }
+  SECTION("2px: lobes along x, a node in the yz plane") {
+    shape.set(2, 1, 1);
+    CHECK_THAT(shape.radius(0, 0.25, kPi / 2, 0.0), WithinAbs(1.0, 1e-9));
+    CHECK_THAT(shape.radius(0, 0.25, kPi / 2, kPi), WithinAbs(1.0, 1e-9));
+    CHECK(shape.radius(0, 0.25, kPi / 2, kPi / 2) == 0.0);
+    CHECK(shape.radius(0, 0.25, 0.0, 0.0) == 0.0);
+  }
+  SECTION("3dz2: lobes on the axis, a ring at the equator, cones of nodes between") {
+    shape.set(3, 2, 0);
+    CHECK_THAT(shape.radius(0, 0.2, 0.0, 0.0), WithinAbs(1.0, 1e-9));
+    CHECK(shape.radius(0, 0.2, kPi / 2, 0.0) > 0.3); // the ring: half the amplitude of the lobes
+    CHECK(shape.radius(0, 0.2, kPi / 2, 0.0) < 1.0);
+    CHECK(shape.radius(0, 0.2, std::acos(1.0 / std::sqrt(3.0)), 0.0) == 0.0); // 54.7 degrees
+  }
+  SECTION("a lower level draws a fatter surface") {
+    shape.set(2, 1, 0);
+    CHECK(shape.radius(0, 0.1, 1.2, 0.0) > 0.0);
+    CHECK(shape.radius(0, 0.5, 1.2, 0.0) == 0.0);
+  }
+}
+
+TEST_CASE("Orbital: Auto picks s, p, d, f by velocity", "[orbital]") {
+  auto l = [](int note, int velocity) { return cs::kOrbitals[static_cast<std::size_t>(cs::OrbitalSource::autoOrbital(note, velocity) - 1)].l; };
+  CHECK(l(60, 20) == 0);
+  CHECK(l(60, 60) == 1);
+  CHECK(l(60, 100) == 2);
+  CHECK(l(60, 127) == 3);
+  // The key turns the orbital: every m of that l comes up.
+  std::vector<int> seen;
+  for (int note = 60; note < 64; ++note)
+    seen.push_back(cs::kOrbitals[static_cast<std::size_t>(cs::OrbitalSource::autoOrbital(note, 127) - 1)].m);
+  std::sort(seen.begin(), seen.end());
+  CHECK(seen == std::vector<int>{0, 1, 2, 3});
+}
+
+TEST_CASE("Orbital: the wireframe of 1s is circles on a sphere", "[orbital]") {
+  cs::OrbitalParams p;
+  p.orbital = 1;
+  p.spin = 0.0;
+  p.tilt = 0.0;
+  p.bloomMs = 0.0;
+  p.voice.size = 1.0;
+  cs::OrbitalEngine voice;
+  const Render r = play(voice, p, 57, 80, 0.2, 0.0);
+  double peak = 0.0;
+  std::size_t onRim = 0;
+  for (std::size_t i = 0; i < r.x.size(); ++i) {
+    const double radius = analysis::radius(r.x[i], r.y[i]);
+    peak = std::max(peak, radius);
+    onRim += std::abs(radius - 0.9) < 0.005;
+  }
+  CHECK_THAT(peak, WithinAbs(0.9, 0.002));
+  // Seen along no tilt, the meridians are ellipses and lines inside the rim;
+  // one of them is the rim itself.
+  CHECK(static_cast<double>(onRim) / static_cast<double>(r.x.size()) > 0.08);
+}
+
+TEST_CASE("Orbital: pitch, picture and hard rest", "[orbital][acceptance]") {
+  cs::OrbitalParams p;
+  SECTION("pitch within 1 cent on a steady picture") {
+    p.spin = 0.0;
+    p.bloomMs = 0.0;
+    p.orbital = GENERATE(1, 4, 8, 17);
+    checkPitch<cs::OrbitalEngine>(p, 80);
+  }
+  SECTION("every orbital stays within r <= 0.95 while it spins and blooms") {
+    p.voice.size = 1.0;
+    p.spin = 120.0;
+    for (int orbital = 1; orbital <= 20; ++orbital) {
+      p.orbital = orbital;
+      p.tilt = 4.5 * orbital;
+      cs::OrbitalEngine voice;
+      const Render r = play(voice, p, 57, 80, 0.5, 0.0);
+      double peak = 0.0;
+      for (std::size_t i = 0; i < r.x.size(); ++i)
+        peak = std::max(peak, analysis::radius(r.x[i], r.y[i]));
+      CAPTURE(orbital);
+      CHECK(peak <= 0.95);
+      CHECK(peak > 0.3);
+    }
+  }
+  SECTION("hard rest") { checkHardRest<cs::OrbitalEngine>(p); }
+}
+
+TEST_CASE("Orbital: it spins, and it blooms from the lobe's core", "[orbital]") {
+  cs::OrbitalParams p;
+  p.orbital = 4; // 2px: lobes along x that swing round as it spins
+  p.tilt = 0.0;
+  p.spin = 90.0;
+  p.bloomMs = 0.0;
+  p.voice.size = 1.0;
+  cs::OrbitalEngine voice;
+  const Render r = play(voice, p, 57, 80, 1.05, 0.0);
+  auto width = [&](std::size_t from) { // widest reach in x over 20 ms
+    float w = 0.0f;
+    for (std::size_t i = from; i < from + 960; ++i)
+      w = std::max(w, std::abs(r.x[i]));
+    return w;
+  };
+  CHECK(width(480) > 0.85);   // lobes along x, side on
+  CHECK(width(47040) < 0.75); // a quarter turn later, end on: only the lobes' width shows
+
+  p.spin = 0.0;
+  p.bloomMs = 200.0;
+  cs::OrbitalEngine blooming;
+  const Render b = play(blooming, p, 57, 80, 0.4, 0.0);
+  auto reach = [&](std::size_t from) {
+    double w = 0.0;
+    for (std::size_t i = from; i < from + 480; ++i)
+      w = std::max(w, analysis::radius(b.x[i], b.y[i]));
+    return w;
+  };
+  CHECK(reach(480) < reach(4800));
+  CHECK(reach(4800) < reach(14400));
+  CHECK_THAT(reach(14400), WithinAbs(0.9, 0.01));
+}
+
+// ------------------------------------------------------------ harmonic timing
+
+namespace {
+
+// Share of the sound's energy in consonant harmonics of f0 (harmonics 1-32,
+// weighted as cs::harmonicWeight), measured on the audio itself.
+double soundConsonance(const Render& r, double f0) {
+  const auto from = static_cast<std::size_t>(1.5 * kSampleRate); // after the solver has settled
+  const auto count = static_cast<std::size_t>(std::floor(0.2 * f0) / f0 * kSampleRate); // whole periods
+  double weighted = 0.0, total = 0.0;
+  for (int k = 1; k <= 32; ++k) {
+    double xr = 0, xi = 0, yr = 0, yi = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+      const double a = 2.0 * kPi * k * f0 * static_cast<double>(i) / kSampleRate;
+      xr += r.x[from + i] * std::cos(a);
+      xi += r.x[from + i] * std::sin(a);
+      yr += r.y[from + i] * std::cos(a);
+      yi += r.y[from + i] * std::sin(a);
+    }
+    const double energy = xr * xr + xi * xi + yr * yr + yi * yi;
+    weighted += cs::harmonicWeight(k) * energy;
+    total += energy;
+  }
+  return weighted / total;
+}
+
+} // namespace
+
+TEST_CASE("Harmonic weights and grids", "[harmonic]") {
+  CHECK(cs::harmonicWeight(1) == 1.0);
+  CHECK(cs::harmonicWeight(8) == 1.0);
+  CHECK_THAT(cs::harmonicWeight(12), WithinAbs(0.9, 1e-12));
+  CHECK_THAT(cs::harmonicWeight(10), WithinAbs(0.7, 1e-12));
+  CHECK(cs::harmonicWeight(7) < cs::harmonicWeight(5));
+  CHECK(cs::harmonicWeight(11) < cs::harmonicWeight(7));
+  CHECK(cs::nextHarmonicGrid(1) == 1);
+  CHECK(cs::nextHarmonicGrid(5) == 6);
+  CHECK(cs::nextHarmonicGrid(7) == 8);
+  CHECK(cs::nextHarmonicGrid(9) == 12);
+  CHECK(cs::nextHarmonicGrid(13) == 16);
+  CHECK(cs::nextHarmonicGrid(90) == 96);
+
+  // Five unequal strokes on a grid of 8: whole slots each, at least one.
+  std::vector<cs::Stroke> strokes;
+  for (int i = 0; i < 5; ++i)
+    strokes.push_back({{0.1 * i, 0.0}, {0.1 * i, 0.1 + 0.15 * i}});
+  std::vector<cs::XY> table(1024);
+  cs::buildTableOnGrid(strokes, table, 8);
+  for (int slot = 0; slot < 8; ++slot) { // every slot starts on the start of a stroke, or inside one
+    const cs::XY p = table[static_cast<std::size_t>(slot) * 128];
+    bool onStroke = false;
+    for (int i = 0; i < 5; ++i)
+      onStroke = onStroke || std::abs(p.x - 0.1f * static_cast<float>(i)) < 1e-6f;
+    CHECK(onStroke);
+  }
+  CHECK(table[0].y == 0.0f);
+  // A pure circle is all fundamental: fully consonant.
+  for (std::size_t i = 0; i < table.size(); ++i)
+    table[i] = {static_cast<float>(std::cos(2 * kPi * static_cast<double>(i) / 1024)), static_cast<float>(std::sin(2 * kPi * static_cast<double>(i) / 1024))};
+  CHECK_THAT(cs::consonance(table), WithinAbs(1.0, 1e-9));
+}
+
+TEST_CASE("Harmonic timing makes the sound more consonant than even timing", "[harmonic]") {
+  const double f0 = cs::midiToHz(45);
+  auto mean = [&](auto&& render) {
+    double even = 0.0, harmonic = 0.0;
+    int better = 0;
+    const int trials = 24;
+    for (int seed = 1; seed <= trials; ++seed) {
+      const double e = soundConsonance(render(cs::Timing::Even, seed), f0);
+      const double h = soundConsonance(render(cs::Timing::Harmonic, seed), f0);
+      even += e;
+      harmonic += h;
+      better += h > e;
+    }
+    return std::array<double, 3>{even / trials, harmonic / trials, static_cast<double>(better) / trials};
+  };
+
+  const auto bubble = mean([&](cs::Timing timing, int seed) {
+    cs::BubbleParams p;
+    p.voice.timing = timing;
+    p.seed = static_cast<std::uint64_t>(seed);
+    p.boil = 0.0;
+    p.type = cs::BubbleType::Random;
+    cs::BubbleEngine voice;
+    return play(voice, p, 45, 80, 1.8, 0.0);
+  });
+  const auto orbital = mean([&](cs::Timing timing, int seed) {
+    cs::OrbitalParams p;
+    p.voice.timing = timing;
+    p.orbital = 1 + (seed - 1) % 20;
+    p.spin = 0.0;
+    cs::OrbitalEngine voice;
+    return play(voice, p, 45, 80, 1.8, 0.0);
+  });
+  const auto chamber = mean([&](cs::Timing timing, int seed) {
+    cs::ChamberParams p;
+    p.timing = timing;
+    p.seed = static_cast<std::uint64_t>(seed);
+    p.type = cs::TypeMode::Random;
+    p.wall = seed % 2 ? cs::WallMode::Shared : cs::WallMode::Off;
+    p.diffusionRate = 0.0;
+    p.drift = 0.0;
+    cs::ChamberEngine voice;
+    voice.prepare(kSampleRate);
+    voice.setParams(p);
+    Render r{std::vector<float>(86400), std::vector<float>(86400)};
+    voice.noteOn(45, 80);
+    voice.process(r.x.data(), r.y.data(), 86400);
+    return r;
+  });
+  WARN("consonant share of the sound, even -> harmonic timing (share of cases improved): bubble "
+       << bubble[0] << " -> " << bubble[1] << " (" << bubble[2] << "), orbital " << orbital[0] << " -> " << orbital[1] << " ("
+       << orbital[2] << "), chamber " << chamber[0] << " -> " << chamber[1] << " (" << chamber[2] << ")");
+  CHECK(bubble[1] >= bubble[0]);
+  CHECK(orbital[1] >= orbital[0]);
+  // A track and a wall are too few strokes to rearrange: no gain, and no loss.
+  CHECK(chamber[1] >= chamber[0] - 0.005);
+}
+
+// ------------------------------------------------------------------ CS Script
+
+namespace {
+
+struct Bounds {
+  double left = 1e9, right = -1e9, bottom = 1e9, top = -1e9;
+};
+Bounds boundsOf(const std::vector<cs::Stroke>& strokes, std::size_t from = 0, std::size_t to = SIZE_MAX) {
+  Bounds b;
+  for (std::size_t i = from; i < std::min(to, strokes.size()); ++i)
+    for (const cs::Vec2& p : strokes[i]) {
+      b.left = std::min(b.left, p.x);
+      b.right = std::max(b.right, p.x);
+      b.bottom = std::min(b.bottom, p.y);
+      b.top = std::max(b.top, p.y);
+    }
+  return b;
+}
+
+} // namespace
+
+TEST_CASE("Script: letters sit on the baseline at capital height 1", "[script]") {
+  const cs::ScriptLayout E = cs::layoutScript("E");
+  REQUIRE(E.strokes.size() == 4); // a stem and three arms
+  CHECK_THAT(E.bottom, WithinAbs(0.0, 1e-9));
+  CHECK_THAT(E.top, WithinAbs(1.0, 1e-9));
+  const cs::ScriptLayout g = cs::layoutScript("g");
+  CHECK(g.bottom < -0.2); // a descender
+  CHECK(g.top < 0.8);     // an x-height letter
+  CHECK(cs::layoutScript("").strokes.empty());
+  CHECK(cs::layoutScript("   ").strokes.empty());
+  // Text runs left to right and is centred on x = 0.
+  const cs::ScriptLayout word = cs::layoutScript("AV");
+  CHECK_THAT(word.left + word.right, WithinAbs(0.0, 1e-9));
+  const std::size_t a = cs::layoutScript("A").strokes.size();
+  CHECK(boundsOf(word.strokes, 0, a).right <= boundsOf(word.strokes, a).left + 0.1); // A and V lean into each other a little
+}
+
+TEST_CASE("Script: superscripts and subscripts are smaller, raised and lowered", "[script]") {
+  const cs::ScriptLayout plain = cs::layoutScript("x2"), raised = cs::layoutScript("x^2"), lowered = cs::layoutScript("x_2");
+  const std::size_t x = cs::layoutScript("x").strokes.size();
+  const Bounds two = boundsOf(plain.strokes, x), up = boundsOf(raised.strokes, x), down = boundsOf(lowered.strokes, x);
+  CHECK_THAT((up.top - up.bottom) / (two.top - two.bottom), WithinAbs(0.62, 0.01));
+  CHECK(up.bottom > 0.4);
+  CHECK(down.top < 0.45);
+  CHECK(down.bottom < -0.15);
+  // Both at once share the column; a braced script holds several letters.
+  const cs::ScriptLayout both = cs::layoutScript("x_i^2");
+  CHECK(both.right - both.left < plain.right - plain.left + 0.1);
+  CHECK(cs::layoutScript("e^{i\\pi}").strokes.size() > cs::layoutScript("e^i").strokes.size());
+}
+
+TEST_CASE("Script: fractions stack, roots cover", "[script]") {
+  const cs::ScriptLayout frac = cs::layoutScript("\\frac{a}{b}");
+  const std::size_t a = cs::layoutScript("a").strokes.size();
+  const Bounds top = boundsOf(frac.strokes, 0, a), bar = boundsOf(frac.strokes, a, a + 1), bottom = boundsOf(frac.strokes, a + 1);
+  CHECK(top.bottom > bar.top);
+  CHECK(bottom.top < bar.bottom);
+  CHECK_THAT(bar.top, WithinAbs(bar.bottom, 1e-9)); // a level bar
+  CHECK(bar.left <= std::min(top.left, bottom.left));
+  CHECK(bar.right >= std::max(top.right, bottom.right));
+
+  const cs::ScriptLayout root = cs::layoutScript("\\sqrt{x+y}");
+  const Bounds sign = boundsOf(root.strokes, 0, 1), inside = boundsOf(root.strokes, 1);
+  CHECK(sign.top > inside.top);
+  CHECK(sign.right >= inside.right);
+  CHECK(sign.left < inside.left);
+}
+
+TEST_CASE("Script: every Greek letter and symbol has a glyph; unknown commands are spelled out", "[script]") {
+  for (const char* name :
+       {"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda", "mu", "nu", "xi",
+        "pi", "rho", "sigma", "tau", "upsilon", "phi", "chi", "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Xi",
+        "Pi", "Sigma", "Phi", "Psi", "Omega", "pm", "times", "cdot", "leq", "geq", "neq", "equiv", "approx", "propto",
+        "infty", "partial", "nabla", "int", "sum", "prod", "to", "in", "subset", "cup", "cap", "exists", "perp", "hbar"}) {
+    const cs::ScriptLayout one = cs::layoutScript(std::string("\\") + name);
+    CAPTURE(name);
+    CHECK(!one.strokes.empty());
+    if (std::string(name) != "cdot") // a dot is a dot
+      CHECK(one.right - one.left > 0.1);
+    CHECK(one.right - one.left < 1.6); // one glyph, not a word
+  }
+  CHECK(cs::layoutScript("\\alpha").strokes.size() != cs::layoutScript("alpha").strokes.size()); // one glyph, not five
+  // A typo shows up as its own name.
+  CHECK(cs::layoutScript("\\alpah").strokes.size() == cs::layoutScript("alpah").strokes.size());
+  // Lines stack downward.
+  const cs::ScriptLayout two = cs::layoutScript("A\\\\B");
+  CHECK(two.lines == 2);
+  CHECK(two.bottom < -1.0);
+  // Odd input does not crash.
+  for (const char* odd : {"^", "_", "{", "}", "\\", "\\frac", "\\frac{a}", "x^", "\\sqrt", "{{{", "a}}b", "$x$", "\\left(\\right)"})
+    (void)cs::layoutScript(odd);
+}
+
+TEST_CASE("Script: text is fitted to the screen", "[script]") {
+  for (const char* text : {"E = mc^2", "i", "\\frac{\\partial\\psi}{\\partial t} = \\hat{H}\\psi",
+                           "The quick brown fox jumps over the lazy dog", "a\\\\b\\\\c\\\\d"}) {
+    const std::vector<cs::Stroke> strokes = cs::fitScript(text);
+    double reach = 0.0;
+    for (const cs::Stroke& s : strokes)
+      for (const cs::Vec2& p : s)
+        reach = std::max(reach, std::hypot(p.x, p.y));
+    CAPTURE(text);
+    CHECK(reach <= 0.85 + 1e-9);
+    CHECK(reach > 0.2);
+  }
+}
+
+TEST_CASE("Script: pitch, picture and hard rest", "[script][acceptance]") {
+  cs::ScriptParams p;
+  p.setText("\\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}");
+  SECTION("pitch within 1 cent") { checkPitch<cs::ScriptEngine>(p, 80); }
+  SECTION("within r <= 0.95") {
+    p.voice.size = 1.0;
+    p.slant = 0.3;
+    cs::ScriptEngine voice;
+    const Render r = play(voice, p, 57, 80, 0.3, 0.0);
+    double peak = 0.0;
+    for (std::size_t i = 0; i < r.x.size(); ++i)
+      peak = std::max(peak, analysis::radius(r.x[i], r.y[i]));
+    CHECK(peak <= 0.95);
+    CHECK(peak > 0.5);
+  }
+  SECTION("hard rest") { checkHardRest<cs::ScriptEngine>(p); }
+  SECTION("no text is silence") {
+    p.setText("");
+    cs::ScriptEngine voice;
+    const Render r = play(voice, p, 57, 80, 0.1, 0.0);
+    for (float v : r.x)
+      REQUIRE(v == 0.0f);
+  }
+}
+
+TEST_CASE("Script: Write time writes the line out from left to right", "[script]") {
+  cs::ScriptParams p;
+  p.setText("ABCDEFGH");
+  p.writeMs = 400.0;
+  p.voice.size = 1.0;
+  cs::ScriptEngine voice;
+  const Render r = play(voice, p, 57, 80, 0.6, 0.0);
+  auto rightmost = [&](double at) {
+    float best = -1.0f;
+    const auto from = static_cast<std::size_t>(at * kSampleRate);
+    for (std::size_t i = from; i < from + 480; ++i)
+      best = std::max(best, r.x[i]);
+    return best;
+  };
+  CHECK(rightmost(0.05) < rightmost(0.2));
+  CHECK(rightmost(0.2) < rightmost(0.35));
+  CHECK_THAT(rightmost(0.45), WithinAbs(rightmost(0.55), 1e-3)); // finished
+  CHECK(rightmost(0.05) < -0.3);
+  CHECK(rightmost(0.55) > 0.7);
+}
+
+// The consonant share of a sound's energy over its first `top` harmonics,
+// from the 4th up: where a sheet's buzz lives.
+double highConsonance(const Render& r, double f0, int top) {
+  const auto from = static_cast<std::size_t>(0.3 * kSampleRate);
+  const auto count = static_cast<std::size_t>(std::floor(0.2 * f0) / f0 * kSampleRate); // whole periods
+  double weighted = 0.0, total = 0.0;
+  for (int k = 4; k <= top; ++k) {
+    // A rotating phasor: one cos/sin per harmonic, not per sample.
+    const double step = 2.0 * kPi * k * f0 / kSampleRate;
+    const double c = std::cos(step), sn = std::sin(step);
+    double pr = 1.0, pi = 0.0, xr = 0, xi = 0, yr = 0, yi = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+      xr += r.x[from + i] * pr;
+      xi += r.x[from + i] * pi;
+      yr += r.y[from + i] * pr;
+      yi += r.y[from + i] * pi;
+      const double nr = pr * c - pi * sn;
+      pi = pr * sn + pi * c;
+      pr = nr;
+    }
+    const double energy = xr * xr + xi * xi + yr * yr + yi * yi;
+    weighted += cs::harmonicWeight(k) * energy;
+    total += energy;
+  }
+  return total > 0.0 ? weighted / total : 0.0;
+}
+
+TEST_CASE("Sheets: harmonic timing puts the scanline buzz on a consonant harmonic", "[sheet][harmonic]") {
+  SECTION("the plan: an even number of rows, a sweep on 2^n or 3 x 2^n, under the ceiling") {
+    for (double samples : {200.0, 436.0, 872.0, 1744.0, 3000.0})
+      for (int scanlines : {8, 20, 64, 160})
+        for (double share : {0.2, 0.45, 0.6, 0.95})
+          for (bool withLines : {false, true}) {
+            cs::SheetParams p;
+            p.scanlines = scanlines;
+            p.fillShare = share;
+            const cs::SheetPlan plan = cs::planSheet(p, samples, withLines);
+            CAPTURE(samples, scanlines, share, withLines, plan.rows, plan.harmonic, plan.share);
+            CHECK(plan.rows % 2 == 0);
+            CHECK(plan.rows <= std::max(4, std::min(scanlines, static_cast<int>(samples * (withLines ? share : 1.0) / 14.0))));
+            int h = plan.harmonic;
+            while (h % 2 == 0)
+              h /= 2;
+            CHECK((h == 1 || h == 3));
+            CHECK_THAT(plan.rows / (2.0 * plan.share), Catch::Matchers::WithinRel(static_cast<double>(plan.harmonic), 1e-9));
+            if (withLines) {
+              CHECK(std::abs(plan.share - share) <= 1.0 / plan.harmonic + 0.15 * (plan.rows <= 4));
+              CHECK(plan.share <= 0.97);
+            } else {
+              CHECK(plan.share == 1.0);
+            }
+          }
+  }
+  SECTION("every instrument: more of the buzz on consonant harmonics than with even timing") {
+    const double f0 = cs::midiToHz(33);
+    std::string report;
+    for (int i = 0; i < cs::kInstrumentCount; ++i) {
+      cs::MultiParams p;
+      p.instrument = static_cast<cs::Instrument>(i);
+      p.script.setText("E = mc^2");
+      p.surface.setFunction("sin(x) * cos(y)");
+      p.surface.spin = 0.0;
+      p.orbital.spin = 0.0;
+      p.mesh.spin = 0.0;
+      p.gallery.scene = cs::Scene::HiggsPotential;
+      p.gallery.spin = 0.0;
+      p.tracker.stage = cs::TrackerStage::Module;
+      p.tracker.spin = 0.0;
+      p.collision.spin = 0.0;
+      p.feynman.motion = 0.0;
+      p.voice.sheet.style = cs::SheetParams::Style::Sheet;
+      double c[2];
+      for (int t = 0; t < 2; ++t) {
+        p.voice.timing = t == 0 ? cs::Timing::Even : cs::Timing::Harmonic;
+        cs::MultiEngine voice;
+        c[t] = highConsonance(play(voice, p, 33, 80, 0.6, 0.0), f0, 256);
+      }
+      CAPTURE(i, c[0], c[1]);
+      report += " " + std::to_string(i) + ": " + std::to_string(c[0]) + " -> " + std::to_string(c[1]) + ";";
+      CHECK(c[1] > c[0]);
+    }
+    WARN("consonant share of harmonics 4-256 of a sheet, even -> harmonic timing, by instrument:" << report);
+  }
+}
+
